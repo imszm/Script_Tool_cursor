@@ -1,0 +1,9 @@
+{
+  "task": "charging",
+  "started_at": "2026-03-16T20:57:04",
+  "finished_at": "2026-03-16T20:57:05",
+  "exit_code": 1,
+  "meta": {
+    "out_dir": "runs\\20260316_205704_charging"
+  }
+}

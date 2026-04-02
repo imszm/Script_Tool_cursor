@@ -1,0 +1,23 @@
+2026-03-20 19:55:50,000 - script_tool - ERROR - Unhandled error: [relay] Connect failed after retries: could not open port 'COM4': FileNotFoundError(2, '系统找不到指定的文件。', None, 2)
+Traceback (most recent call last):
+  File "c:\Users\szm21\Downloads\google_installer\Script_Tool-main\Script_Tool-main\script_tool\drivers\serial_driver.py", line 38, in connect
+    self.ser = serial.Serial(self.cfg.port, self.cfg.baudrate, timeout=self.cfg.timeout_s)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\szm21\AppData\Local\Programs\Python\Python311\Lib\site-packages\serial\serialwin32.py", line 33, in __init__
+    super(Serial, self).__init__(*args, **kwargs)
+  File "C:\Users\szm21\AppData\Local\Programs\Python\Python311\Lib\site-packages\serial\serialutil.py", line 244, in __init__
+    self.open()
+  File "C:\Users\szm21\AppData\Local\Programs\Python\Python311\Lib\site-packages\serial\serialwin32.py", line 64, in open
+    raise SerialException("could not open port {!r}: {!r}".format(self.portstr, ctypes.WinError()))
+serial.serialutil.SerialException: could not open port 'COM4': FileNotFoundError(2, '系统找不到指定的文件。', None, 2)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "c:\Users\szm21\Downloads\google_installer\Script_Tool-main\Script_Tool-main\script_tool\cli.py", line 143, in main
+    task.setup(ctx)
+  File "c:\Users\szm21\Downloads\google_installer\Script_Tool-main\Script_Tool-main\script_tool\tasks\charging.py", line 25, in setup
+    relay.connect()
+  File "c:\Users\szm21\Downloads\google_installer\Script_Tool-main\Script_Tool-main\script_tool\drivers\serial_driver.py", line 45, in connect
+    raise RuntimeError(f"[{self.name}] Connect failed after retries: {last_err}") from last_err
+RuntimeError: [relay] Connect failed after retries: could not open port 'COM4': FileNotFoundError(2, '系统找不到指定的文件。', None, 2)

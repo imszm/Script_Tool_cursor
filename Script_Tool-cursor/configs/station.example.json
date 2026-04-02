@@ -1,0 +1,21 @@
+{
+  "serial": {
+    "relay_port": "COM12",
+    "device_port": "COM14",
+    "relay_ccb_port": "COM12",
+    "baudrate_relay": 9600,
+    "baudrate_device": 115200,
+    "timeout_s": 0.1
+  },
+  "pc_tool": {
+    "upgrade_app_title": "L5 PCTOOL V3.9.00",
+    "ccb_title_regex": "CCB 测试 V3.2.00.*",
+    "ccb_serial_prefix": "2010007005R615GD00590",
+    "ccb_coords": {
+      "pass_light": [1165, 224],
+      "pass_horn": [1171, 274]
+    },
+    "ccb_check_points": [[1701, 820], [1846, 812]]
+  }
+}
+

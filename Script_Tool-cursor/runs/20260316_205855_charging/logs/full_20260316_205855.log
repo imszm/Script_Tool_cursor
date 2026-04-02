@@ -1,0 +1,8 @@
+2026-03-16 20:58:55,906 - script_tool.driver.relay - INFO - [relay] Connected COM4 @ 9600
+2026-03-16 20:58:55,942 - script_tool.driver.device - INFO - [device] Connected COM14 @ 115200
+2026-03-16 20:58:56,945 - script_tool - INFO - --- Charging Cycle 1/100 ---
+2026-03-16 20:59:05,056 - script_tool - WARNING - Result: FAIL (no success keyword)
+2026-03-16 20:59:05,056 - script_tool - INFO - --- Charging Cycle 2/100 ---
+2026-03-16 20:59:14,757 - script_tool - WARNING - Result: FAIL (no success keyword)
+2026-03-16 20:59:14,757 - script_tool - INFO - --- Charging Cycle 3/100 ---
+2026-03-16 20:59:15,764 - script_tool - WARNING - Interrupted by user
