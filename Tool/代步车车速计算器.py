@@ -33,11 +33,11 @@ class SpeedCalculatorApp:
         # 绑定 write 事件，当输入框内容发生任何改变时，触发自动计算
         self.rpm_var.trace_add("write", self._perform_calculation)
 
-        self.ratio_var: tk.StringVar = tk.StringVar(value="20.7")
+        self.ratio_var: tk.StringVar = tk.StringVar(value="6.2")
         self._create_input_row("减速箱减速比:", self.ratio_var, 1)
         self.ratio_var.trace_add("write", self._perform_calculation)
 
-        self.diameter_var: tk.StringVar = tk.StringVar(value="10")
+        self.diameter_var: tk.StringVar = tk.StringVar(value="8")
         self._create_input_row("轮胎外径 (英寸):", self.diameter_var, 2)
         self.diameter_var.trace_add("write", self._perform_calculation)
 
