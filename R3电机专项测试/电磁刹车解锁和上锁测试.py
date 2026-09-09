@@ -13,6 +13,14 @@
 
 全程完整日志自动保存到脚本所在目录的 log 文件夹：
   log/解锁上锁成功率测试_YYYYMMDD_HHMMSS.log
+
+过温保护（暂停/自动恢复）：
+  - 任一侧 MOSFET/电机温度超过阈值(MOS_TEMP_LIMIT/MOTOR_TEMP_LIMIT)时，
+    双方立即停止电机并暂停当前测试流程；
+  - 冷却期间双方每2秒互相同步温度，待温度均降至恢复阈值
+    (MOS_TEMP_RECOVER/MOTOR_TEMP_RECOVER)以下后自动恢复继续测试；
+  - 收到对端停止/超温信号时立即下发停转指令，防止对端已停止而本端电机持续运转；
+  - 对端线程退出（如锁存故障终止）时，本端所有等待循环立即停止电机并同步退出。
 """
 
 import ctypes
@@ -299,6 +307,7 @@ class PeerRunnerBase:
         self.own_motor_temp = 0
         self.other_mos_temp = 0
         self.other_motor_temp = 0
+        self.other_temp_seen = False   # 是否收到过对端温度心跳（冷却恢复判断前提）
         self.overheat_stopped = False
         self.stop_received = False
         self.skip_round = False
@@ -350,13 +359,17 @@ class PeerRunnerBase:
                     if payload.get('stop', False):
                         self.stop_received = True
                         self.skip_round = True
+                        self.stop_motor_now()  # 立即下发停转指令，防止对端已停止而本端电机继续运转
                         print("收到停止信号，本轮将跳过")
                         continue
                     if payload.get('overheat', False):
+                        if not self.overheat_stopped:
+                            print("收到超温信号，立即停止电机")
                         self.overheat_stopped = True
-                        print("收到超温信号")
+                        self.stop_motor_now()  # 立即下发停转指令
                     self.other_mos_temp = payload.get('mos_temp', 0)
                     self.other_motor_temp = payload.get('motor_temp', 0)
+                    self.other_temp_seen = True
                     self._payload_queue.append(payload)
         except Exception:
             pass
@@ -364,15 +377,15 @@ class PeerRunnerBase:
             return self._payload_queue.popleft()
         return None
 
-    def update_own_temperature(self):
-        """读取本机温度并心跳上报，成功返回True"""
+    def update_own_temperature(self, extra=None):
+        """读取本机温度并心跳上报，成功返回True；extra 中的附加字段（如超温标志）一并上报"""
         if self.motor is None:
             return False
         mos, mot = self.motor.read_temperature()
         if mos is not None and mot is not None:
             self.own_mos_temp = mos
             self.own_motor_temp = mot
-            self.send_status({})
+            self.send_status(dict(extra) if extra else {})
             return True
         return False
 
@@ -381,9 +394,10 @@ class PeerRunnerBase:
                 or self.other_mos_temp > MOS_TEMP_LIMIT or self.other_motor_temp > MOTOR_TEMP_LIMIT):
             if not self.overheat_stopped:
                 print(f"超温！本机 MOSFET:{self.own_mos_temp}℃ 电机:{self.own_motor_temp}℃ | "
-                      f"对方 MOSFET:{self.other_mos_temp}℃ 电机:{self.other_motor_temp}℃，发送停止信号")
+                      f"对方 MOSFET:{self.other_mos_temp}℃ 电机:{self.other_motor_temp}℃，发送超温信号并立即停止电机")
                 self.send_status({'overheat': True})
                 self.overheat_stopped = True
+                self.stop_motor_safely()  # 检测到超温立即停止电机，不等本轮流程走完
             return True
         return False
 
@@ -422,11 +436,25 @@ class PeerRunnerBase:
             if self.fault_rounds >= 3:
                 print(f"[错误] {label}错误码持续无法清除，疑似设备锁存故障（如过温保护锁存）")
                 print(f"[错误] 请将{label}电机控制器断电重启后重新运行脚本，测试终止")
-                self.send_status({'stop': True})
+                self.send_status_multiple({'stop': True}, count=3, interval=0.1)  # 多次重发确保对端收到
                 return False
         else:
             self.fault_rounds = 0
         return True
+
+    def stop_motor_now(self):
+        """立即下发一次停转指令（单次、尽力而为），用于收到停止/超温信号时的快速止血；
+        完整停转（多次重发）由 stop_motor_safely 负责"""
+        try:
+            if self.motor:
+                self.motor.set_speed_params(speed=0, accel=50, current=0)
+        except BaseException:
+            pass
+
+    def clear_stale_messages(self):
+        """丢弃 IPC 接收缓冲中残留的旧消息，防止上一轮残留指令串扰到下一轮"""
+        self._payload_queue.clear()
+        self._recv_buf = b""
 
     def stop_motor_safely(self):
         """尽力停止电机输出（不关闭串口），用于跳过轮次/超温时防止电机保持运转"""
@@ -439,17 +467,29 @@ class PeerRunnerBase:
             pass
 
     def wait_for_cooldown(self, tag):
-        """超温后停止电机并等待双方温度降到恢复阈值以下，恢复后自动继续测试。
-        返回 False 表示对端线程已结束，应退出主循环。"""
-        print(f">>> [{tag}] 进入冷却等待：电机已停止，等待双方温度恢复 "
+        """超温后立即停止电机并暂停测试，等待双方温度降到恢复阈值以下后自动恢复继续。
+        冷却期间每2秒读温度并心跳给对方（温度未恢复时心跳附带超温标志，防止对端漏收
+        首次超温信号而继续运行）；温度连续读取失败（串口异常）达10次时终止测试。
+        返回 False 表示对端线程已结束或无法继续监控温度，应退出主循环。"""
+        print(f">>> [{tag}] 超温暂停：电机已停止，等待双方温度恢复 "
               f"(MOSFET<{MOS_TEMP_RECOVER}℃ 且 电机<{MOTOR_TEMP_RECOVER}℃)...")
         self.stop_motor_safely()
         last_read = 0
         last_print = 0
+        read_fail = 0
         while not self.peer_done.is_set():
             now = time.time()
             if now - last_read >= 2.0:
-                self.update_own_temperature()  # 读温度并心跳给对方
+                # 温度（本方视角）仍未恢复时持续附带超温标志，确保对端进入/保持暂停
+                still_hot = (self.own_mos_temp >= MOS_TEMP_RECOVER or self.own_motor_temp >= MOTOR_TEMP_RECOVER
+                             or self.other_mos_temp >= MOS_TEMP_RECOVER or self.other_motor_temp >= MOTOR_TEMP_RECOVER)
+                if self.update_own_temperature({'overheat': True} if still_hot else None):
+                    read_fail = 0
+                else:
+                    read_fail += 1
+                    if read_fail >= 10:
+                        print(f"[{tag}] 温度连续读取失败（串口异常），无法监控温度，终止测试")
+                        return False
                 last_read = now
             self.recv_status(0.1)  # 收对方温度心跳
             if now - last_print >= 10.0:
@@ -457,13 +497,16 @@ class PeerRunnerBase:
                       f"对方 MOSFET:{self.other_mos_temp}℃ 电机:{self.other_motor_temp}℃")
                 last_print = now
             own_valid = self.own_mos_temp > 0 or self.own_motor_temp > 0  # 确保至少读到过一次有效温度
-            if (own_valid
+            if (own_valid and self.other_temp_seen
                     and self.own_mos_temp < MOS_TEMP_RECOVER and self.own_motor_temp < MOTOR_TEMP_RECOVER
                     and self.other_mos_temp < MOS_TEMP_RECOVER and self.other_motor_temp < MOTOR_TEMP_RECOVER):
                 print(f"[{tag}] 温度已恢复，继续测试")
                 self.overheat_stopped = False
                 self.stop_received = False
                 self.skip_round = False
+                if hasattr(self, '_error_count'):
+                    self._error_count = 0
+                self.clear_stale_messages()  # 丢弃超温暂停前残留的旧指令，防止跨轮串扰
                 return True
         return False
 
@@ -480,8 +523,8 @@ class PeerRunnerBase:
             pass
 
     def round_aborted(self):
-        """本轮是否因停止/超温等原因需要放弃"""
-        return self.skip_round or self.stop_received or self.overheat_stopped
+        """本轮是否因停止/超温/对端线程退出等原因需要放弃"""
+        return self.skip_round or self.stop_received or self.overheat_stopped or self.peer_done.is_set()
 
 # ========== 被测电机（原 被测电机_解锁上锁成功率测试.py） ==========
 class TestedMotorRunner(PeerRunnerBase):
@@ -563,6 +606,7 @@ class TestedMotorRunner(PeerRunnerBase):
                     self.stop_motor_safely()
                     self.close_motor()
                     time.sleep(0.5)
+                    self.clear_stale_messages()  # 丢弃上一轮残留指令，防止跨轮串扰
                     continue
 
                 cycle_count += 1
@@ -652,6 +696,10 @@ class TestedMotorRunner(PeerRunnerBase):
                 last_temp_read = 0
                 while time.time() - start_wait < 30:
                     now = time.time()
+                    if self.peer_done.is_set():
+                        print(">>> 负载线程已结束，立即停止电机")
+                        self.stop_motor_safely()
+                        break
                     if self.stop_received or self.skip_round:
                         print("收到停止信号，退出本轮")
                         break
@@ -725,6 +773,7 @@ class TestedMotorRunner(PeerRunnerBase):
             print("上锁: 0/0")
         print("=" * 40)
 
+        self.stop_motor_safely()  # 退出前确保电机停转
         self.close_motor()
         if self.sock:
             self.sock.close()
@@ -833,6 +882,7 @@ class LoadMotorRunner(PeerRunnerBase):
                     self.stop_motor_safely()
                     self.close_motor()
                     time.sleep(0.5)
+                    self.clear_stale_messages()  # 丢弃上一轮残留指令，防止跨轮串扰
                     continue
 
                 cycle_count += 1
@@ -1014,6 +1064,7 @@ class LoadMotorRunner(PeerRunnerBase):
                 continue
 
         print(f"\n全部 {cycle_count} 轮执行完毕（或程序被终止）")
+        self.stop_motor_safely()  # 退出前确保电机停转
         self.close_motor()
         if self.sock:
             self.sock.close()
