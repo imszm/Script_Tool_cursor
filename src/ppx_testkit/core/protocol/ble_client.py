@@ -28,8 +28,8 @@ from ppx_testkit.exceptions import (
     DeviceExceptionResponse,
     FrameFormatError,
     FrameParseError,
+    HardwareError,
     ProtocolError,
-    SerialTimeoutError,
 )
 
 log = logging.getLogger(__name__)
@@ -89,13 +89,17 @@ class BleClient:
         try:
             request = self.codec.format(self.dev_id, cmd, reg, 1)
             resp = self.transport.transact(request, timeout, looks_like_frame, idle_gap_s=0.05)
-        except (ProtocolError, SerialTimeoutError) as exc:
+        except (ProtocolError, HardwareError) as exc:
             log.error("BLE 收发失败 reg=%d: %s", reg, exc)
-            return BleResult(False, b"", None, error=str(exc))
+            return BleResult(False, b"", None, error=f"{type(exc).__name__}: {exc}")
         if not resp:
             log.error("BLE 应答超时 reg=%d (%.2fs)", reg, timeout)
             return BleResult(False, b"", None, error="应答超时")
-        msg, status = self.codec.parse(resp, self.dev_id)
+        try:
+            msg, status = self.codec.parse(resp, self.dev_id)
+        except ProtocolError as exc:
+            log.error("BLE 解析异常: %s RX=%s", exc, resp.hex(" ").upper())
+            return BleResult(False, resp, None, error=str(exc))
         if status != PPX_PARSE_OK:
             log.error("BLE 解析失败 返回码=%d RX=%s", status, resp.hex(" ").upper())
             return BleResult(False, resp, status, error=f"解析失败({status})")
