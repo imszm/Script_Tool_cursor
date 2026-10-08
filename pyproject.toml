@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ppx-testkit"
+version = "0.1.0"
+description = "四轮电动代步车 / 电动轮椅 嵌入式整机自动化测试工具集"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyserial>=3.5",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Windows 桌面自动化与弹窗
+win = [
+    "pywin32>=306; sys_platform == 'win32'",
+    "pywinauto>=0.6.8; sys_platform == 'win32'",
+]
+gui = [
+    "pyautogui>=0.9.54",
+    "pygetwindow>=0.0.9",
+    "psutil>=5.9",
+    "pillow>=10.0",
+    "opencv-python>=4.8",
+    "numpy>=1.26",
+]
+report = [
+    "pandas>=2.0",
+    "openpyxl>=3.1",
+    "chardet>=5.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+ppx-test = "ppx_testkit.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"ppx_testkit.core.report" = ["templates/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra -m 'not hardware'"
+markers = [
+    "hardware: 需要连接真实串口/继电器/被测设备，默认跳过（pytest -m hardware 手动执行）",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+src = ["src", "tests"]
+extend-exclude = [
+    "L5_CCB&MCB白盒测试",
+    "L5系列SMT&组装升级测试工具",
+    "P3系列SMT&组装升级测试工具",
+    "R3_MCB白盒测试",
+    "R3电机专项测试",
+    "R3系列总装测试工具",
+    "Tool",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "E722"]
+ignore = ["E501"]

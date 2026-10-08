@@ -1,0 +1,15 @@
+# 复制为 config/local.yaml 后按本机实际情况修改（local.yaml 已被 .gitignore 忽略）。
+#
+# 顶层键对所有工位生效；stations.<工位名> 下的键只对该工位生效。
+
+# logging:
+#   root_dir: D:/TestLogs
+
+stations:
+  relay_power_cycle:
+    serial:
+      relay:  { match: { port: COM3 } }
+      device: { match: { port: COM13 } }
+  mcb_whitebox:
+    serial:
+      mcb: { match: { port: COM9 } }
