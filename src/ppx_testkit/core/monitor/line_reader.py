@@ -249,3 +249,7 @@ class BackgroundLogReader(threading.Thread):
                         break
                 if not recovered:
                     return
+            except Exception:  # noqa: BLE001 - 线程内任何异常都必须通知主流程，而不是静默退出
+                log.exception("后台日志线程异常退出")
+                self.failed_event.set()
+                return
