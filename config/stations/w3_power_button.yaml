@@ -1,0 +1,56 @@
+# W3 继电器模拟电源键开关机压力测试（迁移自 Tool/W3继电器开关机压力测试.py）
+#
+# 用法：
+#   ppx-test run w3_power_button --port relay=COM4 --port device=COM7
+#
+# 行为（与旧脚本一致）：
+#   * 初始化：发送松开(0x4F) 等 1s -> 发送使能(0x51) 等 1s；
+#   * 每轮：长按 2.5s 开机 -> 监听 10s -> 短按 1.0s 关机 -> 监听 3s；
+#   * 日志出现通信丢失 / voice_msg num: 6 即停止测试并保留现场（不再按关机键）；
+#   * 关键字为区分大小写的精确子串匹配（match_mode: exact）；
+#   * 退出时总是发送松开(0x4F)。
+station: w3_power_button
+app: power_cycle.power_button
+description: W3 继电器电源键开关机压测（命中停止关键字保留现场）
+
+serial:
+  relay:
+    baudrate: 9600
+    timeout: 1.0
+    match: { port: COM4 }         # 旧脚本 RELAY_PORT_KEYWORD="COM4"；本机端口请在 config/local.yaml 覆盖
+  device:
+    baudrate: 115200
+    timeout: 1.0
+    encoding: gb2312
+    encoding_errors: replace
+    match: { description_contains: [cp210x] }
+
+relay:
+  type: command
+  channels:
+    1: { "on": 0x50, "off": 0x4F }   # NC 常闭接法：0x50 = 按下，0x4F = 松开（安全状态）
+  commands:
+    enable: 0x51                  # 初始化使能/查询指令
+  post_write_delay_s: 0.0
+  drain_response: false
+
+keywords:
+  match_mode: exact
+  abort_keep_power: true
+  abort:
+    - "force_main_polling, communication loss"
+    - "voice_msg num: 6"
+
+test:
+  cycles: 500000
+  relay_channel: 1
+  press_on_s: 2.5
+  press_off_s: 1.0
+  hold_s: 10.0
+  after_off_watch_s: 3.0
+  init_release_wait_s: 1.0
+  init_commands: [enable]
+  init_command_wait_s: 1.0
+  reconnect_delay_s: 3.0
+  stop_on_fail: true              # 旧脚本继电器/串口异常即停止
+  notify: true

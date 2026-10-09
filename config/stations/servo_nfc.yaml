@@ -1,0 +1,74 @@
+# 舵机刷 NFC 卡开关机压力测试（迁移自 Tool/舵机压力测试_V1_1.py）
+#
+# 用法：
+#   ppx-test run servo_nfc --port servo=COM15 --port device=COM21
+#
+# 行为（与旧脚本一致）：
+#   * 舵机下压刷卡（期望开机停留 2.1s / 期望关机停留 2.0s）-> 抬起停留 3.5s -> 再等 1s 判定；
+#   * 按状态关键字在本轮日志中最后一次出现的位置判定设备最终状态（区分大小写），
+#     与期望状态比较；无论成败都把当前状态同步为实际状态；
+#   * 致命关键字命中即停止、ppx_packet region is invalid 3s 内 3 次停止；停止时舵机抬起，保留现场；
+#   * 两轮之间随机间隔 0.5~1.5s。
+station: servo_nfc
+app: servo.servo_nfc
+description: 舵机 NFC 刷卡开关机压测（致命关键字 + 频率熔断）
+
+serial:
+  servo:
+    baudrate: 115200
+    timeout: 0.2
+    write_timeout: 1.0
+    open_retries: 1               # 重试由 test.servo_retries 控制
+    match: { port: COM15 }        # 旧脚本固定 COM15；本机端口请在 config/local.yaml 覆盖
+  device:
+    baudrate: 115200
+    timeout: 0.1
+    encoding: utf-8
+    encoding_errors: replace
+    match: { port: COM21 }        # 旧脚本固定 COM21
+
+keywords:
+  match_mode: normalized          # 等价旧脚本的 \s* 模糊正则 + IGNORECASE
+  abort_keep_power: true
+  abort:
+    - "left motor,communication loss!!!"
+    - "right motor,communication loss!!!"
+    - "0 motor recv"
+    - "voice_msg num: 7"
+    - "reg_addr (00) isunviald"
+    - "assertion failed"
+    - "hard fault"
+    - "param is invalid"
+  rate_rules:
+    - { keyword: "ppx_packet region is invalid", window_s: 3.0, count: 3, severity: critical, keep_power: true }
+
+test:
+  cycles: 10000
+  initial_status: "off"
+  servo_id: 0
+  low_position: 2500
+  high_position: 500
+  move_time_ms: 1000
+  low_stay_on_s: 2.1
+  low_stay_off_s: 2.0
+  high_stay_s: 3.5
+  settle_s: 1.0
+  gap_min_s: 0.5
+  gap_max_s: 1.5
+  startup_wait_s: 2.0
+  status_match_mode: exact
+  status_on:
+    - "ui_pm_acc:nfc-on,screen-off"
+    - "ui_pm_acc:acc-on,screen-off"
+    - "Thread Operating System"
+  status_off:
+    - "ui_pm_acc:nfc-off,screen-on"
+    - "ui_pm_acc:acc-off,screen-on"
+    - "power_off"
+  servo_retries: 2
+  servo_retry_delay_s: 0.1
+  buffer_lines: 5000
+  reconnect_interval_s: 3.0
+  fail_tail_lines: 10
+  stop_on_fail: false
+  notify: true

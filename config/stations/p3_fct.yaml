@@ -1,0 +1,17 @@
+# P3 系列 SMT/FCT（迁移自 P3系列SMT&组装升级测试工具/P3系列SMT_FCT测试工具.py）
+# channels 里的坐标和 ROI 需按实际治具画面校准。
+station: p3_fct
+app: fct.p3_fcb
+description: P3 FCB 多通道 SMT/FCT（SN 递增 + 绿灯状态机）
+
+fct:
+  sn_base: P3FCT000001
+  sn_suffix_width: 6
+  loop_count: 1
+  channels:
+    - pass_button: [400, 800]
+      database_point: [400, 700]
+      final_pass_roi: [300, 100, 500, 200]
+      status_points:
+        power: [400, 300]
+        comm: [400, 400]

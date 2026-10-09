@@ -1,0 +1,15 @@
+# 升级日志关键字压力（读取工具日志框，命中“失败/超时”即失败）
+station: upgrade_log_stress
+app: pctool.upgrade_log_stress
+description: PC 工具升级日志关键字压力
+
+window:
+  title: PCTool
+  backend: uia
+
+stress:
+  cycles: 10
+  cycle_wait_s: 1.0
+  fail_keywords: [失败, 超时]
+  upgrade_button: { title: 升级, control_type: Button }
+  log_edit: { auto_id: txtLog, control_type: Edit }

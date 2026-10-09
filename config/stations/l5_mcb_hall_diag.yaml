@@ -1,0 +1,30 @@
+# L5 MCB 霍尔传感器体检（迁移自 L5_CCB&MCB白盒测试/libcs_mcb/libs/mcb_V1.4.7.py）
+#
+# 用于排查 0x040000 / 0x240000 故障：电机不通电，仅轮询霍尔状态。
+# 运行后看到“开始监听”提示时，用手用力转动电机轮子。
+#
+#   ppx-test run l5_mcb_hall_diag --port mcb=COM9
+station: l5_mcb_hall_diag
+app: whitebox.mcb_hall_diag
+description: L5 MCB 霍尔传感器体检（人工转动车轮，判定霍尔跳变）
+
+serial:
+  mcb:
+    baudrate: 460800
+    timeout: 0.1
+    match: { port: COM9 }       # 旧脚本默认端口；本机端口请在 config/local.yaml 覆盖
+
+link:
+  dll: resources/dll/l5/ppx_region.dll
+  serial: mcb
+  dev_id: 0x20
+  rx_timeout_s: 0.1
+  retries: 1                    # 旧脚本单次读取不重试
+  retry_delay_s: 0.0
+
+hall_diag:
+  duration_s: 20.0
+  poll_interval_s: 0.1
+  required_transitions: 6       # 有效(1~6)跳变次数 >= 该值判 PASS（旧脚本 > 5）
+  voltage_scale: 0.1
+  max_consecutive_read_failures: 50

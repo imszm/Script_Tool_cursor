@@ -1,0 +1,11 @@
+# 列出目标窗口全部控件，便于填写其它工位的 auto_id / title。
+station: inspect_controls
+app: pctool.inspect_controls
+description: 识别并导出应用窗口控件
+
+window:
+  title: PCTool
+  backend: uia
+
+inspect:
+  output_name: controls.txt

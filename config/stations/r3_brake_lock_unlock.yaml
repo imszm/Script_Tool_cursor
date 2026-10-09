@@ -1,0 +1,74 @@
+# R3 电磁刹车解锁 / 上锁成功率压测（迁移自 R3电机专项测试/电磁刹车解锁和上锁测试_优化完整版.py）
+#   ppx-test run r3_brake_lock_unlock --port tested=COM28 --port load=COM11
+station: r3_brake_lock_unlock
+app: motor.brake_lock_unlock
+description: R3 电磁刹车解锁/上锁成功率测试（被测电机 + 负载电机对拖）
+
+serial:
+  tested:                       # 被测电机 MCB
+    baudrate: 460800
+    timeout: 0.02
+    write_timeout: 0.5
+    open_retries: 3
+    retry_delay_s: 0.5
+    match: { port: COM28 }
+  load:                         # 负载电机 MCB
+    baudrate: 460800
+    timeout: 0.02
+    write_timeout: 0.5
+    open_retries: 3
+    retry_delay_s: 0.5
+    match: { port: COM11 }
+
+protocol:
+  dll_path: resources/dll/r3/ppx_region.dll
+  dev_id: 0x20
+  rx_timeout_s: 0.3
+  retries: 3                    # 单帧收发重试（旧脚本 _send_recv retry_count=3）
+  retry_delay_s: 0.03
+
+brake_test:
+  cycles: 1000
+  round_interval_s: 3.0
+  stop_on_fail: false
+  max_consecutive_failures: 0   # 0 = 不按连续失败熔断
+  clear_error_on_start: true
+  clear_error_each_round: true  # 负载电机每轮清错
+  clear_error_before_unlock: true
+  command_retries: 3            # 旧脚本 send_cmd_with_retry
+  command_retry_delay_s: 0.1
+
+  # brake_reg: 写 brake_state 寄存器 OPENED/CLOSED（优化版做法）
+  # clutch_mode / lock_mode: 写 run_mode=12 / 3（原版做法）
+  unlock_method: brake_reg
+  lock_method: brake_reg
+  unlock_check_timeout_s: 1.0   # 解锁判定：错误码==0 且 刹车==OPENED
+  unlock_poll_interval_s: 0.1
+  relock_on_unlock_fail: true   # 解锁失败后给被测电机上锁，避免下一轮从“已打开”状态开始
+  verify_lock: true             # 上锁后回读刹车状态==CLOSED（原版校验，优化版未校验）
+  lock_check_timeout_s: 1.0
+  lock_poll_interval_s: 0.1
+
+  pre_run_s: 1.0                # 负载预运行（优化版 0.5s + 0.5s）
+  run_time_min_s: 1.0           # 解锁后对拖时长；max > min 时在区间内随机（原版 1~2s）
+  run_time_max_s: 1.0
+  stop_before_lock_s: 1.0       # 被测减速停止后等待再上锁
+  stop_accel: 100
+  keepalive_interval_s: 0.0     # >0 时运行阶段周期重发转速/电流（原版 0.2s），0 = 不重发（优化版）
+  hold_slice_s: 0.02
+  lock_on_teardown: true
+  reconnect_delay_s: 0.5
+
+  tested: { run_mode: 2, speed: -1000, accel: 100, current: 10 }   # 骑行模式，与负载反向对拖
+  load:   { run_mode: 4, speed: 1000, accel: 100, current: 20 }    # 推行模式
+
+  overheat:                     # 超温保护（来自原版脚本，可选）
+    enabled: false
+    mos_limit: 85
+    motor_limit: 150
+    mos_recover: 70             # 回差，防止抖动
+    motor_recover: 120
+    check_interval_s: 0.2
+    cooldown_poll_s: 2.0
+    max_read_failures: 10       # 冷却期间温度连续读取失败次数 -> 熔断
+    cooldown_timeout_s: 0       # 0 = 不限时

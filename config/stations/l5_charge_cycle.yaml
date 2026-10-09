@@ -1,0 +1,59 @@
+# L5 继电器充电压力测试（迁移自 Tool/继电器充电压力测试_L5.py）
+#
+# 用法：
+#   ppx-test run l5_charge_cycle --port relay=COM3 --port device=COM4
+#
+# 行为（与旧脚本一致）：
+#   * 压测前断开继电器并静置 10s；
+#   * 每轮：清空缓冲 -> 闭合 -> 最长 25s 内等待充电语音关键字（命中即结束）
+#     -> 命中则继续闭合 3s -> 断开 -> 静置监听 10s；
+#   * 闭合阶段命中成功关键字为 PASS，否则 FAIL 并继续下一轮；
+#   * paramisinvalid 3s 内 3 次：停止测试并断开继电器；
+#   * 每条继电器指令连发两次（间隔 50ms）防止电磁干扰吞字节 -> relay.repeat: 2。
+station: l5_charge_cycle
+app: charge.charge_cycle
+description: L5 继电器充电通断压力测试
+
+serial:
+  relay:
+    baudrate: 9600
+    timeout: 0.1
+    match: { description_contains: [CH340] }
+  device:
+    baudrate: 115200
+    timeout: 0.1
+    encoding: utf-8
+    encoding_errors: ignore
+    match: { description_contains: [CP210] }
+
+relay:
+  type: command
+  channels:
+    1: { "on": 0x50, "off": 0x4F }   # YAML 中 on/off 须加引号，否则会被解析为布尔值
+  repeat: 2
+  repeat_gap_s: 0.05
+  post_write_delay_s: 0.05
+  drain_response: true
+
+keywords:
+  match_mode: normalized
+  concat_buffer_max: 0            # 旧脚本逐行匹配
+  success:
+    - "voice_msgnum:9"
+    - "voice_msgnum:10"
+  exception:
+    - assertionfailedatfunction
+  rate_rules:
+    - { keyword: paramisinvalid, window_s: 3.0, count: 3, severity: error, keep_power: false }
+
+test:
+  cycles: 500000
+  relay_channel: 1
+  charge_on_s: 25.0
+  post_success_hold_s: 3.0
+  off_reset_s: 10.0
+  initial_off_s: 10.0
+  flush_before_on: true
+  reconnect_delay_s: 3.0
+  stop_on_fail: false
+  notify: true

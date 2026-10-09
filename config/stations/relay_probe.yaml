@@ -1,0 +1,30 @@
+# 继电器指令/极性人工探测（迁移自 Tool/查看继电器状态.py）
+#
+# 用法：
+#   ppx-test run relay_probe --port relay=COM9
+#
+# 依次发送 0x4F、0x50，每步观察继电器是否“咔哒”吸合 / 指示灯状态，按回车继续。
+# 确认极性后填写各压测工位的 relay.channels.<ch>.on / off。
+station: relay_probe
+app: power_cycle.relay_probe
+description: 继电器指令极性人工探测（逐条发送并观察）
+
+serial:
+  relay:
+    baudrate: 9600
+    timeout: 0.1
+    match: { port: COM9 }         # 旧脚本固定 COM9；本机端口请在 config/local.yaml 覆盖
+
+relay:
+  type: command
+  commands:
+    cmd_4f: 0x4F
+    cmd_50: 0x50
+  post_write_delay_s: 0.1
+  drain_response: true
+
+test:
+  interactive: true
+  steps:
+    - { command: cmd_4f, expect: "继电器吸合 / 指示灯亮" }
+    - { command: cmd_50, expect: "继电器断开 / 指示灯灭" }

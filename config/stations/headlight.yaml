@@ -1,0 +1,65 @@
+# 大灯闪烁压力测试（合并 Tool/TestHeadlights/*.py）
+#
+# 用法：
+#   ppx-test run headlight                              # 默认方案 spec
+#   ppx-test run headlight --set lamp.variant=no_spec
+#   ppx-test run headlight --port relay_icse=COM4       # 指定串口（建议写入 config/local.yaml）
+#
+# 间隔检查说明见 config/stations/turn_signal.yaml。
+station: headlight
+app: lamp.headlight
+description: 大灯闪烁压力测试（ICSE 继电器第 2/3 路）
+
+serial:
+  relay_icse:
+    baudrate: 9600
+    timeout: 0.5
+    match: { port: COM4 }
+
+relays:
+  icse:
+    type: icse_a0                # 帧 A0 <ch> <state> <sum>：第 2 路 A0 02 01 A3 / A0 02 00 A2
+    post_write_delay_s: 0.0
+
+lamp:
+  variant: spec
+  cycles: null
+  variants:
+    # ---------------------------------------------------------------- 规范间隔：第 3 路亮 0.5s / 灭 1s
+    spec:
+      description: 第 3 路灯规范间隔闪烁（亮 0.5s，灭 1s）
+      serial: relay_icse
+      relay: relays.icse
+      cycles: 10
+      setup_steps:
+        - { action: wait, wait_s: 0.5, label: 等待继电器模块就绪 }
+      cycle_steps:
+        - { action: ch_on, channel: 3, wait_s: 0.5, label: 灯亮 }
+        - { action: ch_off, channel: 3, wait_s: 1.0, label: 灯灭 }
+      teardown_steps:
+        - { action: ch_off, channel: 3 }
+      checks:
+        - { name: 点亮时长, start: ch3_on, end: ch3_off, min_s: 0.4, max_s: 0.7 }
+        - { name: 熄灭时长, start: ch3_off, end: ch3_on, min_s: 0.9, max_s: 1.3 }
+
+    # ---------------------------------------------------------------- 非规范间隔：左右交替亮 2s
+    no_spec:
+      description: 第 2/3 路灯交替闪烁（各亮 2s，切换间隔 0.5s，仅记录间隔）
+      serial: relay_icse
+      relay: relays.icse
+      cycles: 10
+      setup_steps:
+        - { action: ch_off, channel: 2 }
+        - { action: ch_off, channel: 3, wait_s: 1.0 }
+      cycle_steps:
+        - { action: ch_on, channel: 2, wait_s: 2.0, label: 左灯亮 }
+        - { action: ch_off, channel: 2, wait_s: 0.5, label: 左灯灭 }
+        - { action: ch_on, channel: 3, wait_s: 2.0, label: 右灯亮 }
+        - { action: ch_off, channel: 3, wait_s: 0.5, label: 右灯灭 }
+      teardown_steps:
+        - { action: ch_off, channel: 2 }
+        - { action: ch_off, channel: 3 }
+      checks:
+        - { name: 左灯点亮时长, start: ch2_on, end: ch2_off, min_s: 1.9, max_s: 2.3, enforce: false }
+        - { name: 左右切换间隔, start: ch2_off, end: ch3_on, min_s: 0.4, max_s: 0.8, enforce: false }
+        - { name: 右灯点亮时长, start: ch3_on, end: ch3_off, min_s: 1.9, max_s: 2.3, enforce: false }

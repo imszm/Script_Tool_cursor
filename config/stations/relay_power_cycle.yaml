@@ -1,0 +1,73 @@
+# 继电器上下电开关机压力测试（迁移自 Tool/继电器开关机压力测试.py v3）
+#
+# 用法：
+#   ppx-test run relay_power_cycle                         # 串口建议在 config/local.yaml 中指定
+#   ppx-test run relay_power_cycle --port relay=COM3 --port device=COM13
+#   ppx-test run relay_power_cycle --set test.cycles=100
+#
+# 行为（与旧脚本一致）：
+#   * 压测前上电一次做串口连通性预验证，8s 内零数据则不启动压测；
+#   * 每轮：清空缓冲 -> 上电 -> 固定监听 5s -> 命中成功关键字才断电并等待 5s 放电；
+#   * 未命中成功关键字：继电器保持闭合（保留现场）并停止测试，区分“零数据故障 / 关键字未命中”；
+#   * 频率熔断（paramisinvalid 3s/3 次、reg_addr(00) 1s/3 次）：保持上电，停止测试；
+#   * Ctrl+C / 程序异常：断电后退出。
+station: relay_power_cycle
+app: power_cycle.relay_power_on
+description: 继电器开关机压力测试（失败保留现场 + 零数据预判）
+
+serial:
+  relay:
+    baudrate: 9600
+    timeout: 0.1
+    match: { description_contains: [CH340] }     # 旧脚本：描述含 ch340 的为继电器
+  device:
+    baudrate: 115200
+    timeout: 0.1
+    encoding: gb2312
+    encoding_errors: replace
+    match: { description_contains: [CP210] }     # 旧脚本：描述含 cp210x 的为设备日志口
+
+relay:
+  type: command
+  channels:
+    1: { "on": 0x50, "off": 0x4F }   # 0x50 闭合上电 / 0x4F 断开断电；极性相反的模块互换即可（on/off 须加引号）
+  post_write_delay_s: 0.1
+  drain_response: true
+
+keywords:
+  match_mode: normalized          # 去 ANSI、转小写、去空白后子串匹配（旧脚本 lower().replace(" ", "")）
+  concat_buffer_max: 2048         # 成功关键字跨行拼接容错
+  success:
+    - motorpoweron
+    - poweron
+    - "voice_msgnum:"
+    - threadoperatingsystem
+    - motor_svc_init
+    - "ui_pm_acc:1:acc1:on0"
+    - "exitsleep:acc_key1"
+    - "acc_cb,key_evt:1"
+  exception:
+    - assertionfailedatfunction
+  info:
+    - voice_msgnum
+    - voice_msgcutoff
+    - ui_pm_acc
+  rate_rules:
+    - { keyword: paramisinvalid, window_s: 3.0, count: 3, severity: error, keep_power: true }
+    - { keyword: "[e/motor]reg_addr(00)isunviald", window_s: 1.0, count: 3, severity: critical, keep_power: true }
+
+test:
+  cycles: 200000
+  relay_channel: 1
+  power_on_s: 5.0
+  power_off_s: 5.0
+  monitor_device: true
+  flush_before_on: true
+  stop_on_success: false          # 固定监听满 power_on_s
+  precheck: true
+  precheck_timeout_s: 8.0
+  no_data_warning_s: 2.5
+  reconnect_delay_s: 3.0
+  fail_keeps_power: true          # 失败不断电，保留现场
+  stop_on_fail: true
+  notify: true
