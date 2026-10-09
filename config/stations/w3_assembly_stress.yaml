@@ -1,0 +1,12 @@
+# 组装生产工具压力（迁移自 Tool/组装生产工具压力测试.py）
+# 与升级工具同一套点击压测，窗口标题和动作列表分开配置。
+station: w3_assembly_stress
+app: pctool.w3_pctool_stress
+description: W3 组装生产工具点击压力
+
+stress:
+  window_title: 组装生产工具
+  process_keyword: 组装
+  cycles: 100
+  actions:
+    - { point: [800, 600], label: 确认, wait_s: 0.5, input_text: SN0001 }

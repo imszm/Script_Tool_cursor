@@ -1,0 +1,27 @@
+# R3 MCB SMT 功能测试（迁移自 R3系列总装测试工具/R3_MCB_SMT.py）
+# 失败时按配置断电再上电；退出默认不断电，避免覆盖现场。
+station: r3_mcb_fct
+app: fct.r3_mcb
+description: R3 MCB SMT 功能测试（继电器上下电 + 屏幕颜色判定）
+
+serial:
+  relay:
+    baudrate: 9600
+    match: { description_contains: [CH340] }
+
+relay:
+  type: command
+  channels:
+    1: { "on": 0x50, "off": 0x4F }
+  post_write_delay_s: 0.1
+
+fct:
+  start_button: [960, 700]
+  ok_button: [1100, 760]
+  serial_toggle: [400, 200]
+  check_points:
+    - [800, 400]
+  cycles: 100
+  power_on_at_start: true
+  power_off_on_exit: false
+  stop_on_fail: false

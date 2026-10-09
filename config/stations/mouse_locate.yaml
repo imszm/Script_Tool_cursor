@@ -1,0 +1,9 @@
+# 打印鼠标坐标，用于校准 FCT / 点击压测的像素点。Ctrl+C 结束。
+station: mouse_locate
+app: pctool.mouse_locate
+description: 鼠标坐标采样
+
+locate:
+  interval_s: 2.0
+  max_samples: 0
+  output_name: mouse_positions.csv

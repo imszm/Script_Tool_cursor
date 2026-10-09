@@ -1,0 +1,160 @@
+# 转向灯压力测试（合并 Tool/TestTurnSignals/*.py 与 Tool/左右转向灯自动化测试-正式版本.py）
+#
+# 用法：
+#   ppx-test run turn_signal                               # 默认方案 formal
+#   ppx-test run turn_signal --set lamp.variant=left_spec  # 切换方案
+#   ppx-test run turn_signal --set lamp.cycles=20          # 覆盖循环次数
+#   ppx-test run turn_signal --port relay_switch=COM15     # 指定串口（建议写入 config/local.yaml）
+#
+# 间隔检查（checks）：按动作时间戳实测 start 标记 -> end 标记的间隔，
+# enforce: true 时超出 [min_s, max_s] 判该轮 FAIL；enforce: false 只记录（非规范间隔方案）。
+# 标称值 = 步骤 wait_s 之和；上下限留出串口写入与系统调度抖动余量，可按实测调整。
+station: turn_signal
+app: lamp.turn_signal
+description: 转向灯压力测试（规范/非规范间隔、左右交替）
+
+serial:
+  # 单字节指令继电器（0x50 唤醒 / 0x51 初始化 / 0x42 0x4F 0x41 开关），旧脚本固定 COM15
+  relay_switch:
+    baudrate: 9600
+    timeout: 1.0
+    match: { port: COM15 }
+  # ICSE A0 帧继电器（A0 <ch> <state> <sum>），旧脚本固定 COM4
+  relay_icse:
+    baudrate: 9600
+    timeout: 0.5
+    match: { port: COM4 }
+  # R/T/P 单字节指令继电器（正式版本），旧脚本固定 COM4
+  relay_rtp:
+    baudrate: 9600
+    timeout: 0.5
+    match: { port: COM4 }
+
+relays:
+  switch:
+    type: command
+    post_write_delay_s: 0.0      # 旧脚本写入后不额外延时，时序完全由步骤 wait_s 决定
+    commands:
+      wake: 0x50
+      init: 0x51
+      left_toggle: 0x42
+      right_toggle: 0x4F
+      # 旧脚本 test_RightTurnSignalsNoSpecificationIntervals.py 循环中使用 0x41（准备阶段用 0x4F），含义待硬件确认
+      toggle_41: 0x41
+  icse:
+    type: icse_a0
+    post_write_delay_s: 0.0
+  rtp:
+    type: command
+    post_write_delay_s: 0.0
+    commands:
+      wake: 0x50
+      all_off: "ascii:P"         # 关闭第 2、3 路（与 wake 同为 0x50）
+      left_on: "ascii:R"         # 第 2 路（左灯）
+      right_on: "ascii:T"        # 第 3 路（右灯）
+
+lamp:
+  variant: formal
+  cycles: null
+  variants:
+    # ---------------------------------------------------------------- 正式版本：左右灯交替
+    formal:
+      description: 左右转向灯交替点亮（正式版本，左/右亮 0.5s，切换间隔 1s）
+      serial: relay_rtp
+      relay: relays.rtp
+      cycles: 10000
+      max_consecutive_failures: 3
+      setup_steps:
+        - { action: wait, wait_s: 0.5, label: 等待继电器模块就绪 }
+        - { action: command, command: wake, wait_s: 0.5, label: 唤醒继电器 }
+        - { action: command, command: all_off, wait_s: 0.5, label: 全部关闭 }
+      cycle_steps:
+        - { action: command, command: left_on, mark: left_on, wait_s: 0.5, label: 左灯亮 }
+        - { action: command, command: all_off, mark: left_off, wait_s: 1.0, label: 左灯灭 }
+        - { action: command, command: right_on, mark: right_on, wait_s: 0.5, label: 右灯亮 }
+        - { action: command, command: all_off, mark: right_off, wait_s: 1.0, label: 右灯灭 }
+      teardown_steps:
+        - { action: command, command: all_off, label: 收尾全部关闭 }
+      checks:
+        - { name: 左灯点亮时长, start: left_on, end: left_off, min_s: 0.4, max_s: 0.8 }
+        - { name: 左右切换间隔, start: left_off, end: right_on, min_s: 0.9, max_s: 1.3 }
+        - { name: 右灯点亮时长, start: right_on, end: right_off, min_s: 0.4, max_s: 0.8 }
+        - { name: 下一轮间隔, start: right_off, end: left_on, min_s: 0.9, max_s: 1.3 }
+
+    # ---------------------------------------------------------------- 左转向灯规范间隔开关
+    left_spec:
+      description: 左转向灯规范间隔开关（开/关各保持 2s）
+      serial: relay_switch
+      relay: relays.switch
+      cycles: 99
+      setup_steps:
+        - { action: command, command: wake, wait_s: 0.5 }
+        - { action: command, command: init, wait_s: 1.0 }
+        - { action: command, command: wake, wait_s: 0.5 }
+        - { action: command, command: left_toggle, wait_s: 1.0 }
+      cycle_steps:
+        - { action: command, command: wake, wait_s: 0.1 }
+        - { action: command, command: left_toggle, mark: switch_on, wait_s: 2.0, label: 左转向开 }
+        - { action: command, command: wake, wait_s: 0.1 }
+        - { action: command, command: left_toggle, mark: switch_off, wait_s: 2.0, label: 左转向关 }
+      checks:
+        - { name: 开启保持, start: switch_on, end: switch_off, min_s: 1.9, max_s: 2.4 }
+        - { name: 关闭保持, start: switch_off, end: switch_on, min_s: 1.9, max_s: 2.4 }
+
+    # ---------------------------------------------------------------- 右转向灯规范间隔开关
+    right_spec:
+      description: 右转向灯规范间隔开关（开/关各保持 2s）
+      serial: relay_switch
+      relay: relays.switch
+      cycles: 99
+      setup_steps:
+        - { action: command, command: wake, wait_s: 0.5 }
+        - { action: command, command: init, wait_s: 1.0 }
+        - { action: command, command: wake, wait_s: 0.5 }
+        - { action: command, command: right_toggle, wait_s: 1.0 }
+      cycle_steps:
+        - { action: command, command: wake, wait_s: 0.1 }
+        - { action: command, command: right_toggle, mark: switch_on, wait_s: 2.0, label: 右转向开 }
+        - { action: command, command: wake, wait_s: 0.1 }
+        - { action: command, command: right_toggle, mark: switch_off, wait_s: 2.0, label: 右转向关 }
+      checks:
+        - { name: 开启保持, start: switch_on, end: switch_off, min_s: 1.9, max_s: 2.4 }
+        - { name: 关闭保持, start: switch_off, end: switch_on, min_s: 1.9, max_s: 2.4 }
+
+    # ---------------------------------------------------------------- 右转向灯非规范间隔开关
+    right_no_spec:
+      description: 右转向灯非规范间隔开关（开 0.8s / 关 1.0s，仅记录间隔）
+      serial: relay_switch
+      relay: relays.switch
+      cycles: 99
+      setup_steps:
+        - { action: command, command: wake, wait_s: 0.5 }
+        - { action: command, command: init, wait_s: 1.0 }
+        - { action: command, command: wake, wait_s: 0.5 }
+        - { action: command, command: right_toggle, wait_s: 1.0 }
+      cycle_steps:
+        - { action: command, command: wake, wait_s: 0.1 }
+        - { action: command, command: toggle_41, mark: switch_on, wait_s: 0.8, label: 转向开 }
+        - { action: command, command: wake, wait_s: 0.1 }
+        - { action: command, command: toggle_41, mark: switch_off, wait_s: 1.0, label: 转向关 }
+      checks:
+        - { name: 开启保持, start: switch_on, end: switch_off, min_s: 0.8, max_s: 1.1, enforce: false }
+        - { name: 关闭保持, start: switch_off, end: switch_on, min_s: 1.0, max_s: 1.3, enforce: false }
+
+    # ---------------------------------------------------------------- 左右转向按键模拟（非规范间隔）
+    left_no_spec:
+      description: 左/右转向按键模拟按压（K2 -> K3，仅记录间隔）
+      serial: relay_icse
+      relay: relays.icse
+      cycles: 10
+      # 旧脚本 send_cmd 每条指令后固定延时 0.1s，已并入 hold_s / wait_s
+      cycle_steps:
+        - { action: press, channel: 2, hold_s: 0.5, wait_s: 0.7, label: 模拟左转向按键 }
+        - { action: press, channel: 3, hold_s: 0.5, wait_s: 1.1, label: 模拟右转向按键 }
+      teardown_steps:
+        - { action: ch_off, channel: 2 }
+        - { action: ch_off, channel: 3 }
+      checks:
+        - { name: 左键按压时长, start: ch2_on, end: ch2_off, min_s: 0.4, max_s: 0.7, enforce: false }
+        - { name: 左右切换间隔, start: ch2_off, end: ch3_on, min_s: 0.6, max_s: 0.9, enforce: false }
+        - { name: 右键按压时长, start: ch3_on, end: ch3_off, min_s: 0.4, max_s: 0.7, enforce: false }

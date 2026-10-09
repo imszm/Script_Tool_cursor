@@ -1,0 +1,103 @@
+# R3 MCB 电机控制白盒 / 稳定性测试（迁移自 R3_MCB白盒测试/PPX_MCB_V2.PY）
+#   ppx-test run r3_mcb_whitebox --port mcb=COM27 --set r3_mcb.action=full
+station: r3_mcb_whitebox
+app: whitebox.r3_mcb
+description: R3 MCB 电机控制白盒测试（交互菜单 / 全自动白盒 + 稳定性压力）
+
+serial:
+  mcb:
+    baudrate: 460800
+    timeout: 0.1
+    write_timeout: 0.5
+    match: { port: COM27 }      # 本机端口请在 config/local.yaml 或 --port mcb=COMx 中覆盖
+
+protocol:
+  dll_path: resources/dll/r3/ppx_region.dll
+  dev_id: 0x20
+  rx_timeout_s: 0.3             # 旧脚本: 15 x 20ms 轮询
+  retries: 2                    # 旧脚本: 超时/帧不完整重试 1 次
+  retry_delay_s: 0.05
+
+r3_mcb:
+  # interactive(旧脚本默认) | full(--fulltest) | stress(--stress) | status | stop | start(--auto) | ramp(--ramp)
+  action: interactive
+  clear_error_on_start: true
+  # 正常结束时对 interactive/full/stress/ramp 执行安全停机（start 动作本意是让电机保持运转，不停机）；
+  # 异常退出（串口熔断 / Ctrl+C）时总是尝试停机
+  safe_stop_on_exit: true
+  start_speed_rpm: 200          # --auto 默认值
+  low_speed_rpm: 100            # 菜单 1
+  mid_speed_rpm: 300            # 菜单 2
+  target_accel: 500
+  ramp: { max_speed: 500, step: 50, dwell_s: 1.0 }   # --ramp / 菜单 5 默认值
+  delay_scale: 1.0              # 步骤间固定等待(0.1~0.3s)的缩放系数
+  reconnect_delay_s: 1.0
+
+  basic:
+    enabled: true
+    mode_steps:
+      - { mode: 0, name: 空闲 }
+      - { mode: 3, name: 锁车 }
+      - { mode: 4, name: 助力推行 }
+      - { mode: 10, name: 延迟关刹 }
+      - { mode: 11, name: 立即关刹 }
+      - { mode: 12, name: 电磁刹解锁 }
+      - { mode: 0, name: 恢复空闲 }
+    speed_points: [100, 300, 600]
+    speed_tol_abs: 10           # 容差 = max(abs, speed * ratio)
+    speed_tol_ratio: 0.1
+    current_points: [50, 100]   # 单位 0.1A
+    current_tol: 5
+    ramp: { max_speed: 300, step: 100, dwell_s: 0.8 }
+    boundary_speed: -100
+    invalid_read_reg: 0xFF
+    invalid_write_reg: 0x00
+    invalid_write_value: 0x12
+    readonly_write_value: 1234
+    invalid_mode: 13
+    stop_flag_speed: 200
+    stop_flag_abs: 10           # 停止后 |速度| < max(abs, |停止前速度| * ratio) 判 PASS
+    stop_flag_ratio: 0.5
+    rapid_count: 10
+    rapid_interval_s: 0.05
+    status_scan_nums: 25
+    status_limits:
+      bus_voltage_v: [0, 60]
+      bus_current_a: [0, 30]
+      target_speed: [-10000, 10000]
+      target_accel: [0, 20000]
+      motor_speed: [-10000, 10000]
+    response_time_max_ms: 200
+
+  stability:
+    enabled: true
+    cases: [long_run, burst, idle_recovery, mode_switch, ramp_repeat, speed_jump, noise, health_monitor]
+    crash_threshold: 5          # 连续健康检查失败次数 -> 判定死机
+    heartbeat_interval_s: 0.5
+    long_run_cycles: 100
+    long_run_speed: 250
+    long_run_max_fail_ratio: 0.05
+    burst_count: 200
+    burst_interval_s: 0.01
+    burst_max_fail_pct: 5.0
+    idle_wait_s: 5.0
+    mode_switch_rounds: 10
+    mode_switch_modes: [0, 2, 3, 4]
+    mode_switch_max_fail_ratio: 0.1   # 失败次数 <= 轮数 * ratio（与旧脚本一致）
+    ramp_cycles: 5
+    ramp: { max_speed: 300, step: 100, dwell_s: 0.3 }
+    ramp_max_fail_ratio: 0.2
+    jump_pairs: [[0, 600], [-200, 200], [0, 800], [-100, 500]]
+    jump_repeat: 10
+    jump_interval_s: 0.03
+    jump_max_fail_ratio: 0.05
+    noise_packets:
+      - "00 00 00"
+      - "A5 00 00 00 55"
+      - "FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF"
+      - "A5 20 80 00 00 55"
+    noise_settle_s: 0.1
+    noise_interval_s: 0.2
+    monitor_duration_s: 30
+    monitor_speed: 200
+    monitor_max_fail_pct: 2.0

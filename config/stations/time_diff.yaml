@@ -1,0 +1,18 @@
+# 时间差计算工具（迁移自 Tool/时间差计算.py）
+#
+#   ppx-test run time_diff                                   # GUI（需要 tkinter）
+#   ppx-test run time_diff --set time_diff.mode=cli --set "time_diff.start=2026/4/8 16:45:28" \
+#       --set "time_diff.end=2026/4/9 2:49:39"               # 命令行，输出 time_diff.json/csv
+station: time_diff
+app: calculators.time_diff
+description: 时间差计算（两个时间点相差小时数）
+
+time_diff:
+  mode: gui              # gui | cli
+  formats:               # 依次尝试解析
+    - "%Y/%m/%d %H:%M:%S"
+    - "%Y-%m-%d %H:%M:%S"
+  decimals: 4
+  start: null            # 可选：GUI 预填 / cli 默认一组
+  end: null
+  pairs: []              # cli 模式附加组，如 - { name: 老化, start: "2026/4/8 16:45:28", end: "2026/4/9 2:49:39" }

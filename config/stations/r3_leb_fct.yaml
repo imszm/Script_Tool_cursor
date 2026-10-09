@@ -1,0 +1,17 @@
+# R3 LEB SMT 功能测试（无继电器，迁移自 R3系列总装测试工具/R3_LEB_SMT_非继电器.py）
+#
+# 坐标为占位值，上线前用 scripts 里的鼠标定位工位核对后改掉。
+station: r3_leb_fct
+app: fct.r3_leb
+description: R3 LEB SMT 功能测试（扫码 + 屏幕颜色判定）
+
+fct:
+  initial_sn: SN000001
+  app_focus: [960, 540]
+  confirm_button: [1200, 700]
+  ok_button: [1200, 760]
+  check_points:
+    - [800, 400]
+    - [900, 400]
+  cycles: 100
+  stop_on_fail: false

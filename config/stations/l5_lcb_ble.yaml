@@ -1,0 +1,32 @@
+# L5 灯板/CCB BLE 协议 LED 自动化测试
+# （迁移自 L5_CCB&MCB白盒测试/libs_lcb/正式可用/ble_自动化测试工具（测试版本）-V1.6.py）
+#
+# 用法：
+#   ppx-test run l5_lcb_ble --port lcb=COM54
+#   ppx-test run l5_lcb_ble --set lcb_ble.cases=D:/cases/ble_led_cases.xlsx
+#   ppx-test run l5_lcb_ble --set lcb_ble.combo=true          # 自动生成排列组合用例
+#   ppx-test run l5_lcb_ble --set lcb_ble.loop_count=100 --set lcb_ble.loop_delay_s=0.5
+#
+# 用例列说明见 resources/testcases/testcases-模板.csv 与 ppx_testkit/apps/whitebox/lcb_ble.py。
+station: l5_lcb_ble
+app: whitebox.lcb_ble
+description: L5 灯板 BLE 协议 LED 用例测试（Excel/CSV 用例 + HTML 报告）
+
+serial:
+  lcb:
+    baudrate: 460800
+    timeout: 0.1
+    match: { port: COM54 }      # 旧脚本默认端口；本机端口请在 config/local.yaml 覆盖
+
+link:
+  dll: resources/dll/l5/ppx_ble.dll
+  serial: lcb
+  dev_id: 0x60
+  rx_timeout_s: 1.0             # 默认接收超时；用例 recv_timeout 列可覆盖
+
+lcb_ble:
+  cases: resources/testcases/testcases.xlsx
+  combo: false
+  loop_count: 1                 # 执行完整表用例后，对第 1 条用例压力循环的次数（0 表示不循环）
+  loop_delay_s: 0.5
+  title: BLE 自动化测试报告

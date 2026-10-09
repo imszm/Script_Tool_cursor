@@ -1,0 +1,65 @@
+# L5 MCB 白盒测试（迁移自 L5_CCB&MCB白盒测试/libcs_mcb/libs/正式可用/mcb_V1.4.6（白盒测试正式版）.py）
+#
+# 用法：
+#   ppx-test run mcb_whitebox                       # 串口建议在 config/local.yaml 中指定
+#   ppx-test run mcb_whitebox --port mcb=COM9
+#   ppx-test run mcb_whitebox --set mcb_whitebox.target_rpm=500
+#
+# 用例：通信链路 / 环境安全(电压+错误码) / 模式切换 / Gear 读写 / 灯光 IO / 动力回路。
+# 前 3 项为关键用例，失败后跳过其余用例（与旧脚本一致）。
+station: mcb_whitebox
+app: whitebox.mcb_region
+description: L5 MCB 白盒测试（region v1 协议，6 项用例）
+
+serial:
+  mcb:
+    baudrate: 460800
+    timeout: 0.1
+    match: { port: COM9 }       # 旧脚本默认端口；本机端口请在 config/local.yaml 覆盖
+
+link:
+  dll: resources/dll/l5/ppx_region.dll
+  serial: mcb
+  dev_id: 0x20
+  rx_timeout_s: 0.3
+  retries: 3                    # 旧脚本 read_reg 默认重试 3 次
+  retry_delay_s: 0.1
+
+heartbeat:
+  period_s: 0.15                # 影子寄存器刷新周期：RUN_MODE(非零)/RT_SETTING/TARGET_SPEED/DAT_SETTING(非零)
+  max_consecutive_failures: 20  # 连续写失败达到该次数后，其余用例记为 SKIP
+  stop_timeout_s: 2.0
+
+mcb_whitebox:
+  stop_on_critical_fail: true
+  setup_settle_s: 0.5
+  teardown_settle_s: 0.5
+  hb_pause_settle_s: 0.2
+  # Case 1 通信链路
+  ping_attempts: 5
+  ping_retry_delay_s: 0.1
+  # Case 2 环境安全
+  voltage_scale: 0.1            # BUS_VOLTAGE 单位 0.1V
+  min_bus_voltage_v: 30.0       # 设为 0 可关闭电压下限检查
+  clear_err_value: 0x8000       # RT_SETTING.CLR_ERRCODE
+  clear_err_hold_s: 0.5
+  clear_err_settle_s: 0.2
+  # Case 3 模式切换
+  test_run_mode: 7              # MODE_TEST
+  test_dat_setting: 0x20        # DAT_SETTING.TST_MOTO
+  mode_settle_s: 0.5
+  # Case 4 Gear 读写
+  gear_value: 2
+  gear_settle_s: 0.2
+  # Case 5 灯光 IO
+  light_mask: 0x0C              # 左/右转向灯位
+  light_settle_s: 0.3
+  # Case 6 动力回路
+  acceleration: 100             # 软启动加速度
+  acceleration_nums: 2          # 旧脚本以 WRITE + reg_nums=2 下发 32 位加速度
+  acceleration_settle_s: 0.2
+  target_rpm: 300
+  rpm_tolerance: 50             # |abs(实际) - 目标| < 容差 即通过（反馈转速为负属相序定义）
+  speed_poll_count: 15
+  speed_poll_interval_s: 0.2
+  speed_err_clear_hold_s: 0.2

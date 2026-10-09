@@ -1,0 +1,40 @@
+# 把手自动化开关（迁移自 Tool/把手自动化开关.py）
+#
+# 用法：
+#   ppx-test run handle_power_cycle --port relay=COM20
+#
+# 行为（与旧脚本一致）：
+#   * 不监听设备日志，纯继电器循环：发送 "O"（开）-> 保持 3s -> 发送 "P"（关）-> 立即进入下一轮；
+#   * 每条指令独立打开/关闭串口，写入后读取应答约 0.5s（旧脚本 readlines(timeout=0.5)）；
+#   * 退出时（含 Ctrl+C）发送 "P" 断开（旧脚本无此保护）。
+station: handle_power_cycle
+app: power_cycle.relay_power_on
+description: 把手继电器自动开关循环（无设备日志判定）
+
+serial:
+  relay:
+    baudrate: 9600
+    timeout: 0.5
+    match: { port: COM20 }        # 旧脚本固定 COM20；本机端口请在 config/local.yaml 覆盖
+
+relay:
+  type: command
+  channels:
+    1: { "on": "ascii:O", "off": "ascii:P" }   # 旧脚本 bControlRelay(1)="O"（All On），(0)="P"（All Off）
+  commands:
+    ch2_on: "ascii:D"             # 旧脚本 bControlRelay(2)：开第二个继电器（压测流程未使用）
+    ch1_on: "ascii:H"             # 旧脚本 bControlRelay(3)：开第一个继电器（压测流程未使用）
+  open_per_command: true
+  post_write_delay_s: 0.5
+  drain_response: true
+
+test:
+  cycles: 200000
+  relay_channel: 1
+  power_on_s: 3.0
+  power_off_s: 0.0
+  monitor_device: false
+  precheck: false
+  fail_keeps_power: false
+  stop_on_fail: false
+  notify: true

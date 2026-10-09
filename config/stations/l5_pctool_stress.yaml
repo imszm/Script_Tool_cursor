@@ -1,0 +1,17 @@
+# L5 PC 工具软件压力测试（迁移自 PC_tool_工具软件压力测试-V1.2.py）
+# 控件 auto_id / 窗口标题需用 inspect_controls 工位在本机核对。
+station: l5_pctool_stress
+app: pctool.l5_upgrade_stress
+description: L5 PC 工具升级压力（无继电器）
+
+window:
+  title: PCTool
+  backend: uia
+
+stress:
+  cycles: 100
+  stop_on_fail: false
+  sequences:
+    - - { action: set_text, label: 输入序列号, control: { auto_id: txtSN }, text: "{sn}" }
+      - { action: click, label: 开始, control: { title: 开始, control_type: Button } }
+      - { action: wait, label: 等待升级, wait_s: 1.0 }

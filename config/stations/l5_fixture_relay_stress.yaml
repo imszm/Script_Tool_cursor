@@ -1,0 +1,31 @@
+# L5 治具工具压力测试（带继电器，迁移自 治具工具软件压力测试（带继电器版）-V1.3.py）
+# 本轮失败时下一轮重复当前序列（左右灯切换），成功才切到下一序列。
+station: l5_fixture_relay_stress
+app: pctool.l5_upgrade_stress
+description: L5 治具工具压力（继电器 + 窗口）
+
+serial:
+  relay:
+    baudrate: 9600
+    match: { description_contains: [CH340] }
+
+relay:
+  type: command
+  channels:
+    1: { "on": 0x50, "off": 0x4F }
+    2: { "on": 0x51, "off": 0x4E }
+
+window:
+  title: FixtureTool
+  backend: uia
+
+stress:
+  cycles: 100
+  sequence_names: [左灯, 右灯]
+  sequences:
+    - - { action: relay_on, label: 左灯上电, channels: [1] }
+      - { action: click, label: 左灯开始, control: { title: 开始 } }
+      - { action: relay_off, label: 左灯断电, channels: [1] }
+    - - { action: relay_on, label: 右灯上电, channels: [2] }
+      - { action: click, label: 右灯开始, control: { title: 开始 } }
+      - { action: relay_off, label: 右灯断电, channels: [2] }

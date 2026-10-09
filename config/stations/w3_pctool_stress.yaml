@@ -1,0 +1,11 @@
+# W3 升级工具压力（可截图，迁移自 Tool/升级工具压力自动化测试 - 可截图版.py）
+station: w3_pctool_stress
+app: pctool.w3_pctool_stress
+description: W3 PC 工具点击压力（坐标需按本机校准）
+
+stress:
+  window_title: EW01_PCTOOL
+  process_keyword: EW01_PCTOOL
+  cycles: 100
+  actions:
+    - { point: [960, 540], label: 开始, wait_s: 1.0 }

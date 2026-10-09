@@ -1,0 +1,18 @@
+# R3 总装升级（迁移自 R3系列总装测试工具/R3组装升级.py）
+# 图像锚点已整理到 resources/images/r3_assembly/。
+station: r3_assembly_upgrade
+app: assembly.r3_assembly_upgrade
+description: R3 总装 VIN/部件 SN 录入与升级确认
+
+assembly:
+  base_vin: "2022005002R000GD0064"
+  motor_left_sn: ML0001
+  motor_right_sn: MR0001
+  battery_sn: BAT0001
+  start_suffix: 1
+  max_suffix: 10
+  suffix_width: 5
+  images:
+    vin_anchor: resources/images/r3_assembly/vin_label.png
+    popup_window: resources/images/r3_assembly/popup_window.png
+    confirm_button: resources/images/r3_assembly/confirm_button.png

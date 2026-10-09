@@ -1,0 +1,68 @@
+# NFC 开关机异常关键字检测（迁移自 Tool/NFC开关机异常关键字检测.py）
+#
+# 用法：
+#   ppx-test run nfc_power_cycle --port relay=COM15 --port device=COM13
+#
+# 行为（与旧脚本一致）：
+#   * 压测前断电并等待 1s；
+#   * 每轮：上电监听 7s -> 断电 -> 等待 1s -> 再监听 1s；两段日志中出现 motorpoweron / 关机信号即判定成功；
+#   * 失败只计数，继续下一轮；
+#   * 熔断（reg_addr(00) 1s/5 次、paramisinvalid 3s/3 次）：立即断电并停止测试（keep_power: false）；
+#   * 旧脚本每段监听开始时清空严重错误计数 -> reset_rates_each_cycle: true（每轮清空全部频率计数）。
+station: nfc_power_cycle
+app: power_cycle.relay_power_on
+description: NFC 开关机继电器压测（异常关键字熔断断电）
+
+serial:
+  relay:
+    baudrate: 9600
+    timeout: 1.0
+    # 旧脚本规则：描述同时含 "usb" 与 "15"（Windows 描述中的 COM15）；建议在 config/local.yaml 显式指定 port
+    match: { description_contains: [USB], device_contains: ["15"] }
+  device:
+    baudrate: 115200
+    timeout: 0.1
+    encoding: gb2312
+    encoding_errors: ignore
+    match: { description_contains: [CP210, CH340] }
+
+relay:
+  type: command
+  channels:
+    1: { "on": 0x50, "off": 0x4F }   # YAML 中 on/off 须加引号，否则会被解析为布尔值
+  post_write_delay_s: 0.1
+  drain_response: true
+
+keywords:
+  match_mode: normalized
+  concat_buffer_max: 0            # 旧脚本按行拼接后判定，关键字不跨行
+  success:
+    - motorpoweron
+    - pm_acc_tim
+    - power_off_system
+  exception:
+    - assertionfailedatfunction
+  info:
+    - voice_msgnum
+    - voice_msgcutoff
+    - ui_pm_acc
+  rate_rules:
+    - { keyword: "[e/motor]reg_addr(00)isunviald", window_s: 1.0, count: 5, severity: critical, keep_power: false }
+    - { keyword: paramisinvalid, window_s: 3.0, count: 3, severity: error, keep_power: false }
+
+test:
+  cycles: 100000
+  relay_channel: 1
+  power_on_s: 7.0
+  power_on_max_s: 7.0             # 旧脚本 random.uniform(POWER_ON_MIN, POWER_ON_MAX)
+  power_off_s: 1.0
+  initial_off_s: 1.0
+  monitor_device: true
+  flush_before_on: false          # 旧脚本不清空缓冲（断电后残留日志在下一段监听中读取）
+  post_off_watch_s: 1.0
+  reset_rates_each_cycle: true
+  precheck: false
+  reconnect_delay_s: 3.0
+  fail_keeps_power: false
+  stop_on_fail: false
+  notify: true

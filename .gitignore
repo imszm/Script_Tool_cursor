@@ -7,6 +7,14 @@ Tool/Test_Logs/
 *_full_*.txt
 *_summary_*.txt
 
+# === ppx_testkit 运行产物 ===
+/logs/
+/reports/
+config/local.yaml
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
 # === Python Cache ===
 __pycache__/
 *.pyc
