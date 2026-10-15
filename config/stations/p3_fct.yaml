@@ -1,0 +1,47 @@
+# P3 系列 SMT/FCT（迁移自 P3系列SMT&组装升级测试工具/P3系列SMT_FCT测试工具.py）
+# 下面的坐标是旧脚本在原屏幕上的绝对坐标。分辨率或窗口位置不同时，用 mouse_locate 重采后再改。
+station: p3_fct
+app: fct.p3_fcb
+description: P3 FCB 多通道 SMT/FCT（SN 递增 + 绿灯状态机）
+
+fct:
+  sn_base: "2023006001R000GD006800001"
+  sn_suffix_width: 6
+  loop_count: 1
+  channels:
+    - pass_button: [1092, 201]
+      database_point: [1328, 185]
+      final_pass_roi: [10, 100, 140, 320]
+      status_points:
+        power: [539, 185]
+        version: [641, 185]
+        calibrate: [777, 185]
+        opamp: [879, 185]
+        sn: [965, 185]
+    - pass_button: [1092, 406]
+      database_point: [1328, 390]
+      final_pass_roi: [10, 305, 140, 525]
+      status_points:
+        power: [539, 390]
+        version: [641, 390]
+        calibrate: [777, 390]
+        opamp: [879, 390]
+        sn: [965, 390]
+    - pass_button: [1092, 611]
+      database_point: [1328, 595]
+      final_pass_roi: [10, 510, 140, 730]
+      status_points:
+        power: [539, 595]
+        version: [641, 595]
+        calibrate: [777, 595]
+        opamp: [879, 595]
+        sn: [965, 595]
+    - pass_button: [1092, 816]
+      database_point: [1328, 800]
+      final_pass_roi: [10, 715, 140, 950]
+      status_points:
+        power: [539, 800]
+        version: [641, 800]
+        calibrate: [777, 800]
+        opamp: [879, 800]
+        sn: [965, 800]

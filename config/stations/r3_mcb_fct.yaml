@@ -1,0 +1,26 @@
+# R3 MCB SMT 功能测试（迁移自 R3系列总装测试工具/R3_MCB_SMT.py）
+# 坐标是旧脚本在原屏幕上的绝对坐标。分辨率或窗口位置不同时，用 mouse_locate 重采后再改。
+# 失败时按配置断电再上电；退出默认不断电，避免覆盖现场。
+# 旧脚本计划 9999 轮。这里默认 100，正式压测再 --set fct.cycles=9999。
+include:
+  - _fragments/relay_ch340.yaml
+  - _fragments/relay_cmd_50_4f.yaml
+
+station: r3_mcb_fct
+app: fct.r3_mcb
+description: R3 MCB SMT 功能测试（继电器上下电 + 屏幕颜色判定）
+
+fct:
+  start_button: [1802, 822]
+  ok_button: [1518, 559]
+  serial_toggle: [1870, 88]
+  check_points:
+    - [997, 116]
+    - [997, 233]
+    - [997, 342]
+    - [998, 407]
+    - [997, 493]
+  cycles: 100
+  power_on_at_start: true
+  power_off_on_exit: false
+  stop_on_fail: false

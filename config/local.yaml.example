@@ -1,0 +1,86 @@
+# 复制为 config/local.yaml 后按本机实际情况修改（local.yaml 已被 .gitignore 忽略）。
+#
+# 顶层键对所有工位生效；stations.<工位名> 下的键只对该工位生效。
+# 工位 yaml 不写死 COM 口。下面是各工位旧脚本里的默认口，仅作示例。
+
+# logging:
+#   root_dir: D:/TestLogs
+
+stations:
+  relay_power_cycle:
+    serial:
+      relay: { match: { port: COM3 } }
+      device: { match: { port: COM13 } }
+  nfc_power_cycle:
+    serial:
+      relay: { match: { port: COM15 } }
+      device: { match: { port: COM13 } }
+  handle_power_cycle:
+    serial:
+      relay: { match: { port: COM20 } }
+  relay_probe:
+    serial:
+      relay: { match: { port: COM9 } }
+  w3_power_button:
+    serial:
+      relay: { match: { port: COM4 } }
+      device: { match: { port: COM7 } }
+  l5_charge_cycle:
+    serial:
+      relay: { match: { port: COM3 } }
+      device: { match: { port: COM4 } }
+  r3_charge_cycle:
+    serial:
+      relay: { match: { port: COM3 } }
+      device: { match: { port: COM4 } }
+  servo_nfc:
+    serial:
+      servo: { match: { port: COM15 } }
+      device: { match: { port: COM21 } }
+  headlight:
+    serial:
+      relay_icse: { match: { port: COM4 } }
+  turn_signal:
+    serial:
+      relay_switch: { match: { port: COM15 } }
+      relay_icse: { match: { port: COM4 } }
+      relay_rtp: { match: { port: COM4 } }
+  mcb_whitebox:
+    serial:
+      mcb: { match: { port: COM9 } }
+  l5_mcb_hall_diag:
+    serial:
+      mcb: { match: { port: COM9 } }
+  l5_lcb_ble:
+    serial:
+      lcb: { match: { port: COM54 } }
+  lrd_debug:
+    serial:
+      lcb: { match: { port: COM54 } }
+  r3_mcb_whitebox:
+    serial:
+      mcb: { match: { port: COM27 } }
+  r3_brake_lock_unlock:
+    serial:
+      tested: { match: { port: COM28 } }
+      load: { match: { port: COM11 } }
+  # 旧脚本 R3_MCB_SMT.py 继电器口
+  r3_mcb_fct:
+    serial:
+      relay: { match: { port: COM17 } }
+  # 旧脚本治具工具软件压力测试（带继电器版）-V1.3.py
+  l5_fixture_relay_stress:
+    serial:
+      relay: { match: { port: COM4 } }
+  # 点击类工位没有串口。闪退重启时把本机程序路径写在这里，不要写进工位 yaml。
+  # w3_pctool_stress:
+  #   stress:
+  #     program_path: D:/Tools/EW01_PCTOOL/EW01_PCTOOL.exe
+  # w3_assembly_stress:
+  #   stress:
+  #     program_path: D:/Tools/EW01_PCTOOL/EW01_PCTOOL.exe
+#
+# 这些工位不占用串口，换电脑后要核对的是窗口标题或屏幕坐标：
+# p3_fct, r3_leb_fct, r3_assembly_upgrade, l5_pctool_stress,
+# w3_pctool_stress, w3_assembly_stress, upgrade_log_stress,
+# inspect_controls, mouse_locate, speed_calc, time_diff

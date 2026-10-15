@@ -1,0 +1,15 @@
+# 代步车固件车速工程计算器（迁移自 Tool/代步车车速计算器.py）
+#
+#   ppx-test run speed_calc                                  # GUI 实时计算（需要 tkinter）
+#   ppx-test run speed_calc --set speed_calc.mode=cli        # 命令行：计算默认参数与 cases，输出 speed_calc.json/csv
+station: speed_calc
+app: calculators.speed_calc
+description: 车速计算器（电机转速 / 减速比 / 轮胎外径 -> km/h、mph）
+
+speed_calc:
+  mode: gui              # gui | cli
+  rpm: 3728              # 电机转速 (RPM)，GUI 初始值 / cli 默认用例
+  gear_ratio: 6.2        # 减速箱减速比（> 0）
+  wheel_diameter_inch: 8 # 轮胎外径，英寸（> 0）
+  decimals: 2
+  cases: []              # cli 模式附加用例，如 - { name: 高速档, rpm: 4200, gear_ratio: 6.2, wheel_diameter_inch: 10 }

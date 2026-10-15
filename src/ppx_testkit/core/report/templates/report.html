@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>$title</title>
+<style>
+  body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+  h1 { font-size: 20px; }
+  .summary { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 16px; }
+  .kv b { margin-right: 6px; }
+  .filters button { margin-right: 6px; padding: 4px 10px; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 12px; }
+  th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: #f2f2f2; position: sticky; top: 0; }
+  tr.pass td { background: #eefaf0; }
+  tr.fail td { background: #fdecec; }
+</style>
+</head>
+<body>
+<h1>$title</h1>
+<div class="summary">$summary</div>
+<div class="filters">
+  <button onclick="filterRows('')">全部</button>
+  <button onclick="filterRows('PASS')">仅 PASS</button>
+  <button onclick="filterRows('FAIL')">仅 FAIL</button>
+</div>
+<table>
+  <thead><tr>$head</tr></thead>
+  <tbody>
+$body
+  </tbody>
+</table>
+<script>
+function filterRows(v) {
+  document.querySelectorAll('tbody tr').forEach(function (tr) {
+    tr.style.display = (!v || tr.dataset.verdict === v) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

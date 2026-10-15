@@ -1,0 +1,17 @@
+# 项目架构规范
+项目目标：将分散的独立自动化测试脚本解耦为模块化工程，测试判定、时序和关键字规则保持不变。
+
+目录以现有包为准，不要再拆一版根目录 core/、cases/、main.py：
+- src/ppx_testkit/core/：串口、继电器、协议、监控、压测执行器、报告、GUI
+- src/ppx_testkit/apps/：工位编排。只读配置、组装 core 对象、编排步骤，不直接操作 pyserial / ctypes
+- config/stations/：工位 yaml；公共片段放 config/stations/_fragments/，用 include 引用
+- config/local.yaml：本机串口号，不入库
+- resources/：DLL、头文件、图片、用例模板。L5 与 R3 的 ppx_region.dll 分目录存放，不合并加载器
+- 入口：ppx-test（ppx_testkit.cli:main），不是 main.py
+
+# Python 代码编写规范
+1. 所有函数与方法必须包含类型提示 (Type Hints)。
+2. 业务路径使用 logging。print 只允许出现在 cli.py 的 list / ports / show，以及启动前配置错误输出。
+3. 串口与硬件路径必须包含 try-except-finally，异常写入当次 full.log。
+4. 必须包含清晰的中文注释，说明函数功能、入参及返回值。
+5. 重构不得改变原有自动化测试的通过/失败判定。搬代码时用现有单测锁住行为。

@@ -1,0 +1,17 @@
+# 迁移自 Tool/升级工具压力自动化测试 - 可截图版本.py
+# 连接 “L5 PCTOOL V3.9.00”，点击升级后等 170 秒，日志框新增内容含“失败”或“超时”即失败并截图。
+# 旧脚本一直循环到首次失败。这里最多 10 轮，stop_on_fail 默认为 true。试跑用 --set stress.cycles=1。
+station: upgrade_log_stress
+app: pctool.upgrade_log_stress
+description: L5 PC 工具升级日志关键字压力
+
+window:
+  title: "L5 PCTOOL V3.9.00"
+  backend: uia
+
+stress:
+  cycles: 10
+  cycle_wait_s: 170
+  fail_keywords: [失败, 超时]
+  upgrade_button: { auto_id: Widget.buttonUpgrade, control_type: Button }
+  log_edit: { auto_id: Widget.textEditLog, control_type: Edit }

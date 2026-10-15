@@ -1,0 +1,20 @@
+# 来自 Tool/组装生产工具压力测试.py。
+# 坐标是当时那台电脑上的绝对屏幕坐标。换分辨率或窗口位置后，用 mouse_locate 重采再改。
+# 旧脚本循环 30000 次。这里默认 100，正式压测再 --set stress.cycles=30000。
+# 闪退重启需要本机程序路径，写在 config/local.yaml 的 stations.<工位>.stress.program_path，不要把个人安装路径提交进仓库。
+# count_valid 按旧脚本里“有效点击”那份坐标表：开始升级、SN 输入框、确认参数设置不计入。
+stress:
+  window_title: "W3 PCTOOL V5.4.00"
+  process_keyword: EW01_PCTOOL
+  cycles: 100
+  actions:
+    - { point: [1685, 324], label: 开始升级, wait_s: 100, count_valid: false }
+    - { point: [1231, 363], label: SN序列号输入框点击, wait_s: 6, count_valid: false, input_text: W303010ZP004A00001 }
+    - { point: [1683, 370], label: SN写入, wait_s: 6 }
+    - { point: [1687, 410], label: 开启日志, wait_s: 3 }
+    - { point: [1687, 410], label: 关闭日志, wait_s: 3 }
+    - { point: [1683, 491], label: IMU校准, wait_s: 20 }
+    - { point: [1684, 551], label: 恢复出厂设置, wait_s: 7 }
+    - { point: [1684, 581], label: 打开参数设置, wait_s: 1 }
+    - { point: [862, 623], label: 确认参数设置, wait_s: 6, count_valid: false }
+    - { point: [1686, 674], label: 摇杆校准, wait_s: 30 }

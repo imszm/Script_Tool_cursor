@@ -1,4 +1,4 @@
-# === Log and Test Output Files ===
+# 日志与测试输出
 Tool/logs/
 Tool/Test_Logs/
 *.log
@@ -7,32 +7,38 @@ Tool/Test_Logs/
 *_full_*.txt
 *_summary_*.txt
 
-# === Python Cache ===
+# ppx_testkit 运行产物
+/logs/
+/reports/
+config/local.yaml
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-
-# === Python Virtual Environment (新增) ===
 venv/
 .venv/
 env/
 .env
 
-# === Build Artifacts ===
+# 构建产物
 build/
 dist/
 *.spec
 
-# === IDE and Editor Settings (新增 Cursor/VSCode 配置) ===
+# 编辑器。仓库保留 .vscode/settings.json，作为共用的解释器路径。
 .cursor/
-.vscode/
 .idea/
 *.swp
 
-# === OS Metadata ===
+# 系统文件
 .DS_Store
 Thumbs.db
 desktop.ini
+
 # === Log and Test Output Files (auto-added by git_sync.bat) ===
 Tool/logs/
 Tool/Test_Logs/

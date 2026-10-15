@@ -1,0 +1,7 @@
+# 与 w3_pctool_stress 同一套点击序列，来源是 Tool/组装生产工具压力测试.py。
+# 旧脚本窗口标题是 “W3 PCTOOL V5.4.00”，进程名包含 EW01_PCTOOL，不是“组装生产工具”。
+station: w3_assembly_stress
+app: pctool.w3_pctool_stress
+description: W3 组装生产工具点击压力（与 w3_pctool_stress 同一套旧脚本坐标）
+include:
+  - _fragments/w3_pctool_clicks.yaml

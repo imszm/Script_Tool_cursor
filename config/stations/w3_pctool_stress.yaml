@@ -1,0 +1,7 @@
+# W3 PC 工具点击压力。与 w3_assembly_stress 共用 Tool/组装生产工具压力测试.py 的点击序列。
+# 不是升级日志工位。看日志框里的“失败 / 超时”请运行 upgrade_log_stress。
+station: w3_pctool_stress
+app: pctool.w3_pctool_stress
+description: W3 PC 工具点击压力（旧脚本绝对坐标，换电脑后需重采）
+include:
+  - _fragments/w3_pctool_clicks.yaml

@@ -1,0 +1,4 @@
+# 各开关机 / 充电压测共用的断言失败关键字。工位文件只保留自己的成功词和熔断规则。
+keywords:
+  exception:
+    - assertionfailedatfunction

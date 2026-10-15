@@ -1,0 +1,31 @@
+# 迁移自 L5系列SMT&组装升级测试工具/PC_tool_工具软件压力测试-V1.2.py
+# 该脚本实际连接的窗口是 “W3 PCTOOL V5.5.00”，控件用 auto_id，不是屏幕坐标。
+# 旧脚本循环 100000 次。这里默认 100，正式压测再 --set stress.cycles=100000。
+# 窗口标题或 auto_id 对不上时，先跑 inspect_controls 再改本文件。
+station: l5_pctool_stress
+app: pctool.l5_upgrade_stress
+description: W3 PC 工具按钮压力（SN / 日志 / IMU / 恢复出厂 / 参数设置 / 摇杆）
+
+window:
+  title: "W3 PCTOOL V5.5.00"
+  backend: uia
+
+stress:
+  cycles: 100
+  stop_on_fail: false
+  sn:
+    mode: random
+    prefix: W30300GZP004A00
+    random_min: 100
+    random_max: 999
+  sequences:
+    - - { action: set_text, label: 输入SN, control: { auto_id: Widget.lineEditSN, control_type: Edit }, text: "{sn}" }
+      - { action: click, label: 开始, control: { title: 开始, control_type: Button }, wait_s: 2 }
+      - { action: click, label: SN写入, control: { auto_id: Widget.buttonWriteSN, control_type: Button }, wait_s: 6 }
+      - { action: click, label: 开启日志, control: { auto_id: Widget.buttonLogEnable, control_type: Button }, wait_s: 5 }
+      - { action: click, label: 关闭日志, control: { auto_id: Widget.buttonLogEnable, control_type: Button }, wait_s: 5 }
+      - { action: click, label: IMU校准, control: { auto_id: Widget.buttonIMUCali, control_type: Button }, wait_s: 20 }
+      - { action: click, label: 恢复出厂设置, control: { auto_id: Widget.buttonRestore, control_type: Button }, wait_s: 20 }
+      - { action: click, label: 参数设置, control: { auto_id: Widget.buttonSetParams, control_type: Button } }
+      - { action: confirm_dialog, label: 参数设置确认, dialog_title_re: ".*参数设置.*", dialog_button: 确认, dialog_timeout_s: 8, required: false, wait_s: 8 }
+      - { action: click, label: 摇杆校准, control: { auto_id: Widget.buttonJoystickCali, control_type: Button }, wait_s: 15 }

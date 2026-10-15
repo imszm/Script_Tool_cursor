@@ -1,0 +1,28 @@
+# LRD / BLE 灯板单次点灯调试（迁移自 Tool/LRD调试程序.py）
+# 写入一组 LED 字段后立即回读，字段不一致或通信失败返回非 0。
+station: lrd_debug
+app: whitebox.lrd_debug
+description: LRD BLE 灯板点灯调试（写后回读）
+
+serial:
+  lcb:
+    baudrate: 460800
+    timeout: 0.1
+    match: { description_contains: [CP210] }
+
+link:
+  dll: resources/dll/l5/ppx_ble.dll
+  serial: lcb
+  dev_id: 0x60
+  rx_timeout_s: 1.0
+
+lrd:
+  screen_on: 1
+  brightness: 7
+  digital: 88
+  logo: 2
+  rim_state: 1
+  rdygo: 1
+  turn_left: 2
+  turn_right: 2
+  ring: 2

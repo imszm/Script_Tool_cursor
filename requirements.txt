@@ -1,12 +1,27 @@
-pyserial
-pywin32
-pywinauto
-pyautogui
-pygetwindow
-psutil
-pillow
-pandas
-openpyxl
-pytesseract
-pytest
-allure-pytest
+# 与 pyproject.toml 对齐。推荐安装：
+#   python -m pip install -e ".[win,gui,report,dev]"
+#
+# 基础
+pyserial>=3.5
+PyYAML>=6.0
+
+# report
+pandas>=2.0
+openpyxl>=3.1
+chardet>=5.0
+
+# win（仅 Windows）
+pywin32>=306; sys_platform == "win32"
+pywinauto>=0.6.8; sys_platform == "win32"
+
+# gui
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+psutil>=5.9
+pillow>=10.0
+opencv-python>=4.8
+numpy>=1.26
+
+# dev
+pytest>=8.0
+ruff>=0.5

@@ -1,0 +1,7 @@
+# 全局默认配置。工位配置（config/stations/*.yaml）与 config/local.yaml 会在此基础上覆盖。
+logging:
+  root_dir: logs            # 相对项目根目录
+  console_level: INFO
+  file_level: DEBUG         # full.log 记录 DEBUG（含串口收发十六进制）
+  raw_max_bytes: 52428800   # device_raw.log 单文件 50MB 后轮转
+  raw_backup_count: 20

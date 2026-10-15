@@ -1,0 +1,24 @@
+# R3 LEB SMT 功能测试（无继电器，迁移自 R3系列总装测试工具/R3_LEB_SMT_非继电器.py）
+# 坐标是旧脚本在原屏幕上的绝对坐标。分辨率或窗口位置不同时，用 mouse_locate 重采后再改。
+# 旧脚本计划 9999 轮。这里默认 100，正式压测再 --set fct.cycles=9999。
+station: r3_leb_fct
+app: fct.r3_leb
+description: R3 LEB SMT 功能测试（扫码 + 屏幕颜色判定）
+
+fct:
+  initial_sn: "2022005002R000GD006400001"
+  app_focus: [1448, 796]
+  confirm_button: [1566, 408]
+  ok_button: [1570, 323]
+  check_points:
+    - [997, 116]
+    - [997, 178]
+    - [997, 322]
+    - [997, 412]
+    - [997, 475]
+    - [997, 543]
+    - [997, 682]
+    - [997, 753]
+    - [1847, 944]
+  cycles: 100
+  stop_on_fail: false

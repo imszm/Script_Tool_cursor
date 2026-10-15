@@ -1,0 +1,43 @@
+# 迁移自 L5系列SMT&组装升级测试工具/治具工具软件压力测试（带继电器版）-V1.3.py
+# 旧脚本没有窗口点击。它用 ICSE 帧驱动 K2（通道 2，左转）和 K3（通道 3，右转）。
+# 旧脚本默认 50 轮。串口示例是 COM4，写在 config/local.yaml 或 --port relay=COM4。
+station: l5_fixture_relay_stress
+app: pctool.l5_upgrade_stress
+description: L5 治具左右灯压力（ICSE 继电器，无窗口）
+include:
+  - _fragments/relay_ch340.yaml
+
+relay:
+  type: icse_a0
+  post_write_delay_s: 0.0
+  drain_response: false
+
+stress:
+  cycles: 50
+  stop_on_fail: false
+  sequence_names: [左灯, 右灯]
+  init_steps:
+    - { action: relay_off, label: 初始化关闭K2, channels: [2] }
+    - { action: relay_off, label: 初始化关闭K3, channels: [3], wait_s: 0.5 }
+  final_steps:
+    - { action: relay_off, label: 结束关闭K2, channels: [2] }
+    - { action: relay_off, label: 结束关闭K3, channels: [3], wait_s: 0.3 }
+  sequences:
+    - - { action: relay_off, label: 左灯复位K2, channels: [2] }
+      - { action: relay_off, label: 左灯复位K3, channels: [3], wait_s: 0.3 }
+      - { action: wait, label: 左灯模拟按压, wait_s: 0.6 }
+      - { action: relay_on, label: 左灯K2打开, channels: [2] }
+      - { action: relay_off, label: 左灯K3关闭, channels: [3], wait_s: 0.8 }
+      - { action: wait, label: 左灯松开回弹, wait_s: 0.2 }
+      - { action: relay_off, label: 左灯熄灭K2, channels: [2] }
+      - { action: relay_off, label: 左灯熄灭K3, channels: [3], wait_s: 0.8 }
+      - { action: wait, label: 左灯切换间隔, wait_s: 0.7 }
+    - - { action: relay_off, label: 右灯复位K2, channels: [2] }
+      - { action: relay_off, label: 右灯复位K3, channels: [3], wait_s: 0.3 }
+      - { action: wait, label: 右灯模拟按压, wait_s: 0.6 }
+      - { action: relay_off, label: 右灯K2关闭, channels: [2] }
+      - { action: relay_on, label: 右灯K3打开, channels: [3], wait_s: 0.8 }
+      - { action: wait, label: 右灯松开回弹, wait_s: 0.2 }
+      - { action: relay_off, label: 右灯熄灭K2, channels: [2] }
+      - { action: relay_off, label: 右灯熄灭K3, channels: [3], wait_s: 0.8 }
+      - { action: wait, label: 右灯切换间隔, wait_s: 0.7 }

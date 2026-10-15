@@ -1,0 +1,13 @@
+# 列出目标窗口全部控件，便于填写其它工位的 auto_id / title。
+# 默认连旧脚本里的 L5 PCTOOL。查别的窗口时改 title，必要时再加 window_title。
+station: inspect_controls
+app: pctool.inspect_controls
+description: 识别并导出应用窗口控件
+
+window:
+  title: "L5 PCTOOL V3.8.00"
+  window_title: "CCB 测试 L5 PCTOOL V3.8.00"
+  backend: uia
+
+inspect:
+  output_name: controls.txt

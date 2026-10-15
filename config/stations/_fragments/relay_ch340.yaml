@@ -1,0 +1,6 @@
+# 描述含 CH340 的继电器口。本机 COM 口用 config/local.yaml 或 --port relay=COMx 覆盖。
+serial:
+  relay:
+    baudrate: 9600
+    timeout: 0.1
+    match: { description_contains: [CH340] }
