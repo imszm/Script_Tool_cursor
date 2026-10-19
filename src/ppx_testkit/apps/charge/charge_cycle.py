@@ -15,6 +15,10 @@
 
 任何阶段命中熔断规则即 TestAbort；旧脚本熔断后会断开继电器，因此配置中
 ``rate_rules[].keep_power`` 默认为 false。抗干扰的“每条指令连发两次”由 ``relay.repeat: 2`` 表达。
+
+L5 与 R3 都使用 ``test.listen: chunk``：设备日志由后台线程按块读取，先于继电器吸合打开判定。
+成功关键字以数字结尾时不会误命中更长的数字（L5 的 ``voice_msgnum:9`` 对不上 ``voice_msgnum:90``，
+R3 的 ``num: 1`` 对不上 ``num: 10``）。
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any, Literal
 
 from ppx_testkit.apps.power_cycle._common import (
     finish,
@@ -69,6 +74,11 @@ class ChargeCycleConfig:
     max_consecutive_failures: int | None = None
     interval_s: float = 0.0
     notify: bool = True
+    listen: Literal["line", "chunk"] = "line"  # chunk：后台按块读，供 R3 高速日志
+    chunk_read_bytes: int = 256 * 1024
+    drain_grace_s: float = 0.05             # 窗口结束后再把驱动缓冲里已到达的数据读完
+    read_idle_s: float = 0.001              # 读线程没有数据时的轮询间隔
+    success_digit_boundary: bool = False    # 成功词以数字结尾时，禁止后面再接数字
 
     def __post_init__(self) -> None:
         require_runner_options(SECTION, self.cycles, self.max_consecutive_failures)
@@ -80,9 +90,13 @@ class ChargeCycleConfig:
             initial_off_s=self.initial_off_s,
             reconnect_delay_s=self.reconnect_delay_s,
             interval_s=self.interval_s,
+            drain_grace_s=self.drain_grace_s,
+            read_idle_s=self.read_idle_s,
         )
         if self.charge_on_max_s is not None and self.charge_on_max_s < self.charge_on_s:
             raise ConfigError(f"{SECTION}.charge_on_max_s 不能小于 charge_on_s")
+        if self.chunk_read_bytes <= 0:
+            raise ConfigError(f"{SECTION}.chunk_read_bytes 必须 > 0")
 
 
 class ChargeCycle:
@@ -90,7 +104,7 @@ class ChargeCycle:
         self,
         cfg: ChargeCycleConfig,
         relay: RelayDriver,
-        monitor: DeviceLogMonitor,
+        monitor: DeviceLogMonitor | Any,
         *,
         sleep: Callable[[float], None] = time.sleep,
         rng: random.Random | None = None,
@@ -105,22 +119,34 @@ class ChargeCycle:
 
     # ------------------------------------------------------------ StressCycle
     def setup(self) -> None:
+        chunk = hasattr(self.monitor, "prepare_listen")
+        if chunk:
+            self.monitor.start()
         if self.cfg.initial_off_s is not None:
             log.info("环境初始清洗：继电器断开（物理断电重置），等待 %.1fs", self.cfg.initial_off_s)
             self.relay.off(self.cfg.relay_channel)
-            self._sleep(self.cfg.initial_off_s)
-        self.monitor.flush_input()
+            if chunk:
+                self._check_watch(
+                    0, self.monitor.watch(self.cfg.initial_off_s, stop_on_success=False), "初始断电"
+                )
+            else:
+                self._sleep(self.cfg.initial_off_s)
+        if not chunk:
+            self.monitor.flush_input()
 
     def run_cycle(self, index: int) -> CycleResult:
         cfg = self.cfg
         ch = cfg.relay_channel
-        evaluator = self.monitor.evaluator
         limit_s = pick_duration(cfg.charge_on_s, cfg.charge_on_max_s, self._rng)
         log.info("第 %d 轮：最大充电监听 %.1fs", index, limit_s)
 
-        evaluator.reset_cycle()
-        if cfg.flush_before_on:
-            self.monitor.flush_input()
+        # 按块监听时先清空并打开判定，再吸合继电器。继电器两次发令之间读线程仍在收。
+        if hasattr(self.monitor, "prepare_listen"):
+            self.monitor.prepare_listen()
+        else:
+            self.monitor.evaluator.reset_cycle()
+            if cfg.flush_before_on:
+                self.monitor.flush_input()
 
         log.info("继电器 ON（开始充电）")
         try:
@@ -130,7 +156,7 @@ class ChargeCycle:
 
         result = self.monitor.watch(limit_s, stop_on_success=True)
         self._check_watch(index, result, "充电监听")
-        success = evaluator.cycle_success
+        success = result.success
         if success:
             log.info("捕获目标关键字 '%s'（%.1fs），状态维稳，保持闭合 %.1fs",
                      success, result.success_after_s or result.elapsed_s, cfg.post_success_hold_s)
@@ -156,6 +182,9 @@ class ChargeCycle:
         if self._closed:
             return
         self._closed = True
+        stop = getattr(self.monitor, "stop", None)
+        if stop is not None:
+            stop()
         try:
             if summary.keep_power:
                 log.warning("【现场保留】继电器保持当前状态（不断开充电回路）")
@@ -167,9 +196,12 @@ class ChargeCycle:
                     log.error("退出时断开继电器失败: %s", exc)
         finally:
             close_ports(self.relay.transport, self.monitor.transport)
+            exceptions = getattr(self.monitor, "exception_count", None)
+            if exceptions is None:
+                exceptions = self.monitor.evaluator.exception_count
             summary.extra.update({
-                "异常关键字次数": self.monitor.evaluator.exception_count,
-                "设备串口断连次数": self.disconnects,
+                "异常关键字次数": exceptions,
+                "设备串口断连次数": getattr(self.monitor, "reconnects", self.disconnects),
             })
 
     # ------------------------------------------------------------ 内部
@@ -198,9 +230,15 @@ def run(
     ports = open_ports(
         settings, [("relay", not relay_cfg.open_per_command), ("device", True)], factory=factory, finder=finder
     )
+    monitor: DeviceLogMonitor | Any | None = None
     try:
         relay = relay_from_settings(settings, ports["relay"])
-        monitor = build_monitor(settings, ports["device"])
+        if cfg.listen == "chunk":
+            from ppx_testkit.core.factory import build_chunk_monitor
+
+            monitor = build_chunk_monitor(settings, ports["device"], cfg, finder=finder)
+        else:
+            monitor = build_monitor(settings, ports["device"])
         cycle = ChargeCycle(cfg, relay, monitor)
         summary = StressRunner(
             cycle,
@@ -211,5 +249,7 @@ def run(
             interval_s=cfg.interval_s,
         ).run()
     finally:
+        if monitor is not None and hasattr(monitor, "stop"):
+            monitor.stop()
         close_ports(*ports.values())
     return finish(summary, title="继电器充电压测", notify=cfg.notify)

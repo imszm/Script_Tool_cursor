@@ -4,6 +4,7 @@
     ppx-test ports                        列出系统串口
     ppx-test show <station>               打印合并后的生效配置
     ppx-test run <station> [选项]         运行工位
+    ppx-test ui                           打开本机网页运行台
 
 run 选项：
     --set a.b=value       覆盖任意配置项（可重复）
@@ -54,6 +55,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run", help="运行工位")
     _add_station_args(run)
+
+    ui = sub.add_parser("ui", help="打开本机网页运行台")
+    ui.add_argument("--port", type=int, default=8765, help="本机网页端口，默认 8765")
+    ui.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     return p
 
 
@@ -159,6 +164,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_ports()
         if args.command == "show":
             return cmd_show(args)
+        if args.command == "ui":
+            from ppx_testkit.web.server import serve
+
+            return serve(args.port, open_browser=not args.no_browser)
         return cmd_run(args)
     except ConfigError as exc:
         print(f"配置错误: {exc}", file=sys.stderr)

@@ -25,6 +25,8 @@ copy config\local.yaml.example config\local.yaml
 
 ## 运行
 
+不想记命令时，双击 `scripts\start_ui.bat`。浏览器打开本机页面，选择工位、串口和这一次的轮次后开始。页面只监听这台电脑，同一时间只能跑一场。
+
 双击 `scripts\run_station.bat` 只列出工位，然后停在按键提示，不会开始测试。要跑工位，在项目根目录打开终端再输入命令。
 
 第一次接通硬件时加上次数限制。`relay_power_cycle` 的默认次数是 20 万轮，失败时继电器保持上电：

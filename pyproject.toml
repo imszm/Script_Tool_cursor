@@ -45,6 +45,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "ppx_testkit.core.report" = ["templates/*.html"]
+"ppx_testkit.web" = ["static/index.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
