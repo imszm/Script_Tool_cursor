@@ -181,7 +181,7 @@ def test_all_station_configs_load() -> None:
         "r3_brake_lock_unlock", "turn_signal", "headlight", "speed_calc", "time_diff",
         "r3_leb_fct", "r3_mcb_fct", "p3_fct", "r3_assembly_upgrade",
         "l5_pctool_stress", "l5_fixture_relay_stress", "w3_pctool_stress", "w3_assembly_stress",
-        "upgrade_log_stress", "inspect_controls", "mouse_locate",
+        "upgrade_log_stress", "inspect_controls", "mouse_locate", "ppx_pctool_stress",
     ):
         settings = load_settings(name, use_local=False, environ={})
         module = importlib.import_module(f"ppx_testkit.apps.{settings.app}")

@@ -22,6 +22,11 @@ CAUTIONS: dict[str, str] = {
     "r3_mcb_whitebox": "这个工位默认是键盘菜单。网页不能替你按键。",
     "speed_calc": "开始后会再弹出车速计算窗口。",
     "time_diff": "开始后会再弹出时间差窗口。",
+    "ppx_pctool_stress": (
+        "开始后会控制鼠标和键盘操作 PPX PCTOOL。先在工位配置里改好 vin_click 和 confirm_click，"
+        "上位机窗口露在最前面，输入法切到英文。扫码确认 20 秒后还会点一次力矩校验的确认。"
+        "鼠标移到屏幕左上角可紧急停止。"
+    ),
 }
 
 _CYCLE_SECTIONS = ("test", "stress", "lamp")

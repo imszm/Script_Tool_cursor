@@ -111,6 +111,7 @@ L5 与 R3 的 `ppx_region.dll` 同名但接口不同，分别放在 `resources/d
 | `l5_pctool_stress` | W3 PC 工具按钮压力 | `PC_tool_工具软件压力测试-V1.2.py`（窗口 `W3 PCTOOL V5.5.00`） |
 | `l5_fixture_relay_stress` | 治具左右灯（ICSE，无窗口） | `治具工具软件压力测试（带继电器版）-V1.3.py` |
 | `w3_pctool_stress` / `w3_assembly_stress` | W3 点击压力 | 同一来源：`Tool/组装生产工具压力测试.py` |
+| `ppx_pctool_stress` | PPX PCTOOL 车架号与扫码弹窗压力 | 新工位。先改 `config/stations/ppx_pctool_stress.yaml` 里的坐标 |
 | `upgrade_log_stress` | L5 升级日志关键字压力 | `Tool/升级工具压力自动化测试 - 可截图版本.py` |
 | `inspect_controls` | 读取窗口控件 | `识别读取应用窗口控件.py` |
 | `mouse_locate` | 鼠标坐标采样 | `Tool/鼠标定位脚本.py` |
