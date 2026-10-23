@@ -15,4 +15,4 @@
 
 - 应用层只编排：读配置、经 `core.factory` 组装对象、按步骤执行。不在应用里组 DLL 报文，不直接调用 pyserial。
 - CLI 的 `print` 只用于 `list` / `ports` / `show` 和启动前的配置错误。其余路径使用 logging。
-- 旧目录 `Tool/`、`L5*`、`R3*`、`P3*` 只作只读对照，不作为新入口，本轮不删除。
+- 旧目录 `Tool/`、`L5*`、`R3*`、`P3*` 已删除。入口只有 `ppx-test`。DLL 和头文件只放 `resources/`。

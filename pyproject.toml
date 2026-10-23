@@ -59,15 +59,6 @@ markers = [
 line-length = 110
 target-version = "py311"
 src = ["src", "tests"]
-extend-exclude = [
-    "L5_CCB&MCB白盒测试",
-    "L5系列SMT&组装升级测试工具",
-    "P3系列SMT&组装升级测试工具",
-    "R3_MCB白盒测试",
-    "R3电机专项测试",
-    "R3系列总装测试工具",
-    "Tool",
-]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "E722"]
