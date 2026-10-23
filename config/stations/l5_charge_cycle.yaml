@@ -1,9 +1,12 @@
 # L5 继电器充电压力测试（迁移自 Tool/继电器充电压力测试_L5.py）
+# 读取方式与 r3_charge_cycle 相同：后台按块读高速日志，跨块拼接关键字。
+# voice_msgnum:9 不会误命中 voice_msgnum:90，voice_msgnum:10 不会误命中 voice_msgnum:100。
 #
 # 用法：
 #   ppx-test run l5_charge_cycle --port relay=COM3 --port device=COM4
+#   ppx-test run l5_charge_cycle --set test.cycles=2
 #
-# 行为（与旧脚本一致）：
+# 判定（与旧脚本一致）：
 #   * 压测前断开继电器并静置 10s；
 #   * 每轮：清空缓冲 -> 闭合 -> 最长 25s 内等待充电语音关键字（命中即结束）
 #     -> 命中则继续闭合 3s -> 断开 -> 静置监听 10s；
@@ -17,14 +20,15 @@ include:
 
 station: l5_charge_cycle
 app: charge.charge_cycle
-description: L5 继电器充电通断压力测试
+description: L5 继电器充电通断压力测试（高速日志按块读取）
 
 serial:
   device:
     baudrate: 115200
-    timeout: 0.1
+    timeout: 0                 # 按 in_waiting 整段读，不再用 readline 每次取一行
     encoding: utf-8
     encoding_errors: ignore
+    rx_buffer_sizes: [1048576, 262144, 65536]
     match: { description_contains: [CP210] }
 
 relay:
@@ -35,7 +39,7 @@ relay:
 
 keywords:
   match_mode: normalized
-  concat_buffer_max: 0            # 旧脚本逐行匹配
+  concat_buffer_max: 0
   success:
     - "voice_msgnum:9"
     - "voice_msgnum:10"
@@ -43,6 +47,11 @@ keywords:
     - { keyword: paramisinvalid, window_s: 3.0, count: 3, severity: error, keep_power: false }
 
 test:
+  listen: chunk
+  success_digit_boundary: true
+  chunk_read_bytes: 262144
+  drain_grace_s: 0.05
+  read_idle_s: 0.001
   cycles: 500000
   relay_channel: 1
   charge_on_s: 25.0

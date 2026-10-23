@@ -103,6 +103,42 @@ def keyword_evaluator(settings: AppSettings, key: str = "keywords") -> KeywordEv
     return KeywordEvaluator(keyword_config(settings, key))
 
 
+def build_chunk_monitor(
+    settings: AppSettings,
+    transport: SerialTransport,
+    cfg: Any,
+    *,
+    name: str = "device",
+    finder: PortFinder | None = None,
+) -> Any:
+    """按块读取 ``serial.<name>``。供高速设备日志使用，调用方需 ``start`` / ``stop``。
+
+    :param cfg: 含 chunk_read_bytes、drain_grace_s、read_idle_s、success_digit_boundary、reconnect_delay_s。
+    :return: :class:`ppx_testkit.core.monitor.chunk_reader.ChunkLogMonitor`。
+    """
+    from ppx_testkit.core.monitor.chunk_reader import ChunkLogMonitor
+
+    ep = endpoint(settings, name)
+    active_finder = finder or PortFinder()
+
+    def resolve_port() -> str:
+        return active_finder.find(ep.match, name=name)
+
+    return ChunkLogMonitor(
+        transport,
+        keyword_config(settings),
+        encoding=ep.encoding,
+        errors=ep.encoding_errors,
+        raw_source=name,
+        read_bytes=cfg.chunk_read_bytes,
+        drain_grace_s=cfg.drain_grace_s,
+        read_idle_s=cfg.read_idle_s,
+        digit_boundary=cfg.success_digit_boundary,
+        reconnect_delay_s=cfg.reconnect_delay_s,
+        resolve_port=resolve_port,
+    )
+
+
 def build_monitor(
     settings: AppSettings,
     transport: SerialTransport,

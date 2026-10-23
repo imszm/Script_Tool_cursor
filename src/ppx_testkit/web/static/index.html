@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ppx 测试运行台</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font: 15px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; }
+    header { padding: 16px 20px; border-bottom: 1px solid #ccc; }
+    header h1 { margin: 0 0 4px; font-size: 20px; }
+    header p { margin: 0; opacity: 0.8; }
+    main { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 78px); }
+    aside { border-right: 1px solid #ccc; overflow: auto; }
+    button.station { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #ddd;
+      background: transparent; padding: 10px 14px; cursor: pointer; }
+    button.station strong { display: block; }
+    button.station span { display: block; font-size: 12px; opacity: 0.75; }
+    button.station.active { background: #e7f0ff; }
+    section { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+    label { display: block; margin: 8px 0; }
+    select, input { font: inherit; padding: 6px 8px; min-width: 220px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .caution { padding: 8px 10px; background: #fff4d6; color: #333; }
+    #log { flex: 1; min-height: 240px; margin: 0; padding: 10px; overflow: auto;
+      background: #111; color: #e8e8e8; font: 12px/1.45 Consolas, monospace; white-space: pre-wrap; }
+    .muted { opacity: 0.75; }
+    @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ppx 测试运行台</h1>
+    <p>选工位、对一下串口，再点开始。同一时间只能跑一场。关键字和坐标仍在工位配置里，这个页面不改它们。</p>
+  </header>
+  <main>
+    <aside id="list"></aside>
+    <section>
+      <div id="detail" class="muted">先从左边选一个工位。</div>
+      <div class="row">
+        <button id="start" type="button" disabled>开始</button>
+        <button id="stop" type="button" disabled>停止</button>
+        <button id="refresh" type="button">刷新串口</button>
+        <span id="state"></span>
+      </div>
+      <p id="full" class="muted"></p>
+      <pre id="log"></pre>
+    </section>
+  </main>
+  <script>
+    const listEl = document.getElementById("list");
+    const detailEl = document.getElementById("detail");
+    const logEl = document.getElementById("log");
+    const stateEl = document.getElementById("state");
+    const fullEl = document.getElementById("full");
+    const startBtn = document.getElementById("start");
+    const stopBtn = document.getElementById("stop");
+    let stations = [];
+    let ports = [];
+    let current = null;
+    let offset = 0;
+    let stick = true;
+
+    function exitText(code) {
+      if (code === 0) return "通过";
+      if (code === 1) return "未通过";
+      if (code === 2) return "配置错误";
+      if (code === 3) return "硬件或通信故障";
+      if (code === 130 || code === -1073741510) return "已停止";
+      return "退出码 " + code;
+    }
+
+    async function loadAll() {
+      const [st, pt] = await Promise.all([
+        fetch("/api/stations").then((r) => r.json()),
+        fetch("/api/ports").then((r) => r.json())
+      ]);
+      stations = st.stations || [];
+      ports = pt.ports || [];
+      drawList();
+      if (current) show(stations.find((s) => s.name === current.name) || current);
+    }
+
+    function drawList() {
+      listEl.innerHTML = "";
+      stations.forEach((st) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "station" + (current && current.name === st.name ? " active" : "");
+        btn.innerHTML = "<strong></strong><span></span>";
+        btn.querySelector("strong").textContent = st.name;
+        btn.querySelector("span").textContent = st.error || st.description || "";
+        btn.onclick = () => show(st);
+        listEl.appendChild(btn);
+      });
+    }
+
+    function portSelect(name, selected) {
+      const wrap = document.createElement("label");
+      wrap.append(document.createTextNode(name + " "));
+      const sel = document.createElement("select");
+      sel.dataset.port = name;
+      const blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = "不指定，沿用配置";
+      sel.appendChild(blank);
+      const known = new Set(ports.map((p) => p.device));
+      if (selected && !known.has(selected)) {
+        const extra = document.createElement("option");
+        extra.value = selected;
+        extra.textContent = selected + "（已保存）";
+        sel.appendChild(extra);
+      }
+      ports.forEach((p) => {
+        const opt = document.createElement("option");
+        opt.value = p.device;
+        opt.textContent = p.device + (p.description ? "  " + p.description : "");
+        sel.appendChild(opt);
+      });
+      sel.value = selected || "";
+      wrap.appendChild(sel);
+      return wrap;
+    }
+
+    function show(st) {
+      current = st;
+      drawList();
+      detailEl.innerHTML = "";
+      const title = document.createElement("h2");
+      title.textContent = st.name;
+      detailEl.appendChild(title);
+      const desc = document.createElement("p");
+      desc.textContent = st.description || "";
+      detailEl.appendChild(desc);
+      if (st.error) {
+        const err = document.createElement("p");
+        err.textContent = st.error;
+        detailEl.appendChild(err);
+        startBtn.disabled = true;
+        return;
+      }
+      if (st.caution) {
+        const note = document.createElement("div");
+        note.className = "caution";
+        note.textContent = st.caution;
+        detailEl.appendChild(note);
+      }
+      (st.serial || []).forEach((item) => detailEl.appendChild(portSelect(item.name, item.port)));
+      if (st.cycle_key) {
+        const label = document.createElement("label");
+        label.append(document.createTextNode("只跑这一次的轮次（留空用配置里的默认值） "));
+        const input = document.createElement("input");
+        input.id = "cycles";
+        input.type = "number";
+        input.min = "1";
+        input.placeholder = st.cycle_default ? String(st.cycle_default) : "默认";
+        label.appendChild(input);
+        detailEl.appendChild(label);
+      }
+      startBtn.disabled = false;
+    }
+
+    function collectPorts() {
+      const ports = {};
+      detailEl.querySelectorAll("select[data-port]").forEach((sel) => {
+        ports[sel.dataset.port] = sel.value;
+      });
+      return ports;
+    }
+
+    async function startRun() {
+      if (!current) return;
+      const cyclesEl = document.getElementById("cycles");
+      let cycles = null;
+      if (cyclesEl && cyclesEl.value !== "") cycles = Number(cyclesEl.value);
+      const resp = await fetch("/api/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ station: current.name, ports: collectPorts(), cycles })
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        stateEl.textContent = data.error || "启动失败";
+        return;
+      }
+      offset = 0;
+      logEl.textContent = "";
+      stateEl.textContent = "正在运行 " + current.name;
+    }
+
+    async function poll() {
+      try {
+        const status = await fetch("/api/status").then((r) => r.json());
+        const running = !!status.running;
+        stopBtn.disabled = !running;
+        startBtn.disabled = running || !current || !!current.error;
+        if (running) stateEl.textContent = "正在运行 " + (status.station || "");
+        else if (status.exit_code !== null && status.exit_code !== undefined && status.station) {
+          stateEl.textContent = status.station + " " + exitText(status.exit_code);
+        }
+        fullEl.textContent = status.full_log ? "完整日志 " + status.full_log : "";
+        const log = await fetch("/api/log?offset=" + offset).then((r) => r.json());
+        if (log.lines && log.lines.length) {
+          logEl.textContent += log.lines.join("\n") + "\n";
+          if (stick) logEl.scrollTop = logEl.scrollHeight;
+        }
+        offset = log.next || offset;
+        if (status.full_tail && status.full_tail.length && !running) {
+          const mark = "\n----- full.log 尾部 -----\n";
+          if (!logEl.textContent.includes(mark)) logEl.textContent += mark + status.full_tail.join("\n") + "\n";
+        }
+      } catch (err) {
+        stateEl.textContent = "网页连接中断";
+      }
+    }
+
+    logEl.addEventListener("scroll", () => {
+      stick = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 24;
+    });
+    startBtn.onclick = startRun;
+    stopBtn.onclick = () => fetch("/api/stop", { method: "POST" });
+    document.getElementById("refresh").onclick = loadAll;
+    loadAll();
+    setInterval(poll, 1000);
+  </script>
+</body>
+</html>

@@ -1,10 +1,13 @@
-# R3 继电器充电压力测试（迁移自 Tool/继电器充电压力测试_R3.py）
+# R3 继电器充电压力测试
+# 整合自单独优化的 继电器充电压力测试_R3.py：
+#   * 设备大约每 100ms 输出一大批日志，后台线程按块读，不再逐行 readline；
+#   * 先清空并打开判定，再吸合继电器，两次发令之间的日志不会落在空窗里；
+#   * 关键字去掉全部空白后跨块拼接；voice_msg num: 1 不会误命中 num: 10；
+#   * 扩大驱动接收缓冲，避免默认 4KB 在读线程稍慢时丢字节。
 #
 # 用法：
 #   ppx-test run r3_charge_cycle --port relay=COM3 --port device=COM4
-#
-# 流程与 l5_charge_cycle 相同，仅成功关键字不同（开始充电 / 充电完成语音）。
-# 旧 R3 脚本同样每条继电器指令连发两次 -> relay.repeat: 2。
+#   ppx-test run r3_charge_cycle --set test.cycles=2
 include:
   - _fragments/relay_ch340.yaml
   - _fragments/relay_cmd_50_4f.yaml
@@ -12,14 +15,15 @@ include:
 
 station: r3_charge_cycle
 app: charge.charge_cycle
-description: R3 继电器充电通断压力测试
+description: R3 继电器充电通断压力测试（高速日志按块读取）
 
 serial:
   device:
     baudrate: 115200
-    timeout: 0.1
+    timeout: 0                 # 按 in_waiting 整段读，不再用 readline 每次取一行
     encoding: utf-8
     encoding_errors: ignore
+    rx_buffer_sizes: [1048576, 262144, 65536]
     match: { description_contains: [CP210] }
 
 relay:
@@ -38,6 +42,11 @@ keywords:
     - { keyword: paramisinvalid, window_s: 3.0, count: 3, severity: error, keep_power: false }
 
 test:
+  listen: chunk
+  success_digit_boundary: true
+  chunk_read_bytes: 262144
+  drain_grace_s: 0.05
+  read_idle_s: 0.001
   cycles: 500000
   relay_channel: 1
   charge_on_s: 25.0

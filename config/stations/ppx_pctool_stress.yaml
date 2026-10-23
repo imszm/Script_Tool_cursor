@@ -1,0 +1,51 @@
+# PPX PCTOOL 产测扫码压力。
+# 先看坐标：ppx-test run mouse_locate
+# 再开跑：  ppx-test run ppx_pctool_stress
+# 改轮次：  ppx-test run ppx_pctool_stress --set stress.cycles=1000
+#
+# vin_click / confirm_click / torque_confirm_click 都是屏幕绝对坐标（mouse_locate 日志里的 X,Y）。
+# vin_click、confirm_click 仍是占位，不改会点偏。torque_confirm_click 是力矩校验「确认」。
+# 填坐标时窗口放在哪，开跑时就放在哪。
+# follow_window 为 true 时，开跑之后如果把窗口拖走，点击会跟着窗口走。
+# 一轮顺序：
+#   1. 点 VIN 框，输入车架号，回车
+#   2. 等 popup_wait_s，扫码窗弹出
+#   3. 五项条码从上到下各输入一次，每次回车
+#   4. 点扫码窗的「确认」（先按按钮标题，点不到用 confirm_click）
+#   5. 等 settle_wait_s，弹出「力矩校验」
+#   6. 再点一次「确认」（先按按钮标题，点不到用 torque_confirm_click）
+#   7. 等 after_torque_click_s，再开始下一轮
+# 扫码五项不用再点输入框：弹窗出来后焦点在「左力矩」，每条输完回车才会进入下一格。
+# 输入法请切到英文，否则条码里的字母和 + 可能被中文输入法吃掉。
+# 停止：Ctrl+C，或把鼠标移到屏幕左上角。
+station: ppx_pctool_stress
+app: pctool.ppx_scan_stress
+description: PPX PCTOOL 车架号与扫码弹窗压力（先改 vin_click、confirm_click）
+
+stress:
+  window_title: "P3_CN&US 组装升级工具 V2.4.00"
+  dialog_title: "扫码"
+  confirm_button: "确认"
+  cycles: 100
+  startup_delay_s: 3
+  vin: "P30101RZKUS6900002"
+  vin_click: [1328, 138]
+  confirm_click: [861, 705]
+  follow_window: true
+  confirm_by_name: true
+  require_dialog: true
+  popup_wait_s: 2
+  after_enter_s: 0.4
+  settle_wait_s: 20
+  torque_title: "力矩校验"
+  torque_confirm_click: [874, 681]
+  require_torque_dialog: true
+  after_torque_click_s: 10
+  # 弹窗出来后若焦点不在第一格，再加一行屏幕坐标，例如：
+  # first_field_click: [480, 250]
+  barcodes:
+    - { label: 左力矩, text: "WL680004409882+16" }
+    - { label: 右力矩, text: "WR680004408644+01" }
+    - { label: 左电机, text: "PX01-8120Y063203608" }
+    - { label: 右电机, text: "PX01-8120Y063203616" }
+    - { label: 电池, text: "AV06002LH201F9030111" }

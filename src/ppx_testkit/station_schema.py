@@ -108,6 +108,7 @@ def _registry() -> dict[str, AppSchema]:
     from ppx_testkit.apps.pctool.inspect_controls import InspectConfig
     from ppx_testkit.apps.pctool.l5_upgrade_stress import StepStressConfig
     from ppx_testkit.apps.pctool.mouse_locate import LocateConfig
+    from ppx_testkit.apps.pctool.ppx_scan_stress import PpxScanStressConfig
     from ppx_testkit.apps.pctool.upgrade_log_stress import UpgradeLogConfig
     from ppx_testkit.apps.pctool.w3_pctool_stress import W3StressConfig
     from ppx_testkit.apps.power_cycle.power_button import PowerButtonConfig
@@ -207,6 +208,7 @@ def _registry() -> dict[str, AppSchema]:
             ),
         ),
         "pctool.w3_pctool_stress": AppSchema(sections=(SectionRule("stress", W3StressConfig),)),
+        "pctool.ppx_scan_stress": AppSchema(sections=(SectionRule("stress", PpxScanStressConfig),)),
         "pctool.upgrade_log_stress": AppSchema(
             sections=(
                 SectionRule("window", WindowConfig),

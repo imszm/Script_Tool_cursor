@@ -47,6 +47,8 @@ class SerialEndpoint:
     encoding: str = "utf-8"
     encoding_errors: str = "replace"
     log_traffic: bool = True
+    # 高速设备日志时扩大驱动接收缓冲。按顺序尝试，失败再试下一个。空列表表示不改。
+    rx_buffer_sizes: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.baudrate <= 0:
@@ -59,6 +61,8 @@ class SerialEndpoint:
             "".encode(self.encoding)
         except LookupError as exc:
             raise ConfigError(f"未知编码: {self.encoding}") from exc
+        if any(size <= 0 for size in self.rx_buffer_sizes):
+            raise ConfigError(f"rx_buffer_sizes 中的每一项必须 > 0，实际 {self.rx_buffer_sizes}")
 
 
 class SerialTransport:
@@ -73,6 +77,7 @@ class SerialTransport:
         retry_delay_s: float = 1.0,
         name: str = "serial",
         log_traffic: bool = True,
+        rx_buffer_sizes: Iterable[int] = (),
         factory: SerialFactory | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -84,6 +89,7 @@ class SerialTransport:
         self.retry_delay_s = retry_delay_s
         self.name = name
         self.log_traffic = log_traffic
+        self.rx_buffer_sizes = tuple(int(size) for size in rx_buffer_sizes)
         self._factory = factory or default_factory
         self._sleep = sleep
         self._ser: Any = None
@@ -102,6 +108,7 @@ class SerialTransport:
             retry_delay_s=ep.retry_delay_s,
             name=name,
             log_traffic=ep.log_traffic,
+            rx_buffer_sizes=ep.rx_buffer_sizes,
             **kwargs,
         )
 
@@ -127,6 +134,7 @@ class SerialTransport:
                         write_timeout=self.write_timeout,
                     )
                     self.log.info("串口已打开 %s @ %d (第 %d 次尝试)", self.port, self.baudrate, attempt)
+                    self._apply_rx_buffer()
                     return
                 except (serial.SerialException, OSError, ValueError) as exc:
                     last_exc = exc
@@ -207,6 +215,34 @@ class SerialTransport:
             self.log.debug("RX %s", data.hex(" ").upper())
         return data
 
+    def set_rx_buffer(self, sizes: Iterable[int]) -> None:
+        """记录接收缓冲候选大小；串口已打开时立即尝试设置。
+
+        :param sizes: 从大到小的字节数。驱动不支持或设置失败时只记日志，不抛异常。
+        """
+        self.rx_buffer_sizes = tuple(int(size) for size in sizes)
+        with self._lock:
+            if self.is_open:
+                self._apply_rx_buffer()
+
+    def _apply_rx_buffer(self) -> None:
+        """调用方已持有 ``_lock``。高速日志下 Windows 默认 4KB 会在读线程稍慢时丢字节。"""
+        if not self.rx_buffer_sizes or self._ser is None:
+            return
+        setter = getattr(self._ser, "set_buffer_size", None)
+        if setter is None:
+            self.log.info("串口驱动不支持扩大接收缓冲 %s", self.port)
+            return
+        last_error: BaseException | None = None
+        for size in self.rx_buffer_sizes:
+            try:
+                setter(rx_size=size, tx_size=4096)
+                self.log.info("串口 %s 接收缓冲已设为 %d 字节", self.port, size)
+                return
+            except (serial.SerialException, OSError, ValueError, TypeError, AttributeError) as exc:
+                last_error = exc
+        self.log.warning("扩大串口 %s 接收缓冲失败，高速日志下可能丢字节: %s", self.port, last_error)
+
     def read_available(self) -> bytes:
         def _r(ser: Any) -> bytes:
             n = int(ser.in_waiting)
@@ -215,6 +251,28 @@ class SerialTransport:
         data = self._guard("读取", _r)
         if data and self.log_traffic:
             self.log.debug("RX %s", data.hex(" ").upper())
+        return data
+
+    def read_waiting(self, max_bytes: int) -> bytes:
+        """读出当前驱动缓冲里已到达的数据，最多 ``max_bytes`` 字节。
+
+        无数据时立即返回空字节。大块只记录长度，避免高速日志把 full.log 撑满。
+        :return: 本次读到的字节；缓冲为空时为 ``b""``。
+        """
+        limit = max(1, int(max_bytes))
+
+        def _r(ser: Any) -> bytes:
+            waiting = int(ser.in_waiting)
+            if not waiting:
+                return b""
+            return bytes(ser.read(min(waiting, limit)))
+
+        data = self._guard("读取", _r)
+        if data and self.log_traffic:
+            if len(data) <= 64:
+                self.log.debug("RX %s", data.hex(" ").upper())
+            else:
+                self.log.debug("RX %d 字节", len(data))
         return data
 
     def readline(self) -> bytes:
