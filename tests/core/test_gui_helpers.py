@@ -4,7 +4,18 @@ import importlib.util
 
 import pytest
 
-from ppx_testkit.core.gui.screen import Screen, clip_roi, drift_points, is_green, is_red, point_to_roi
+from ppx_testkit.core.gui.screen import (
+    VK_SHIFT,
+    Screen,
+    chord_events,
+    clip_roi,
+    drift_points,
+    is_green,
+    is_red,
+    key_chord,
+    point_to_roi,
+    unicode_events,
+)
 from ppx_testkit.exceptions import GuiError
 
 
@@ -19,6 +30,20 @@ def test_drift_points() -> None:
     assert drift_points((10, 10), 0) == [(10, 10)]
     pts = drift_points((10, 10), 5, step=5)
     assert pts[0] == (10, 10) and len(pts) == 9 and (5, 15) in pts and pts.count((10, 10)) == 1
+
+
+def test_plus_chord_presses_shift_and_releases_it() -> None:
+    # 本机 VkKeyScan('+') 的结果：VK_OEM_PLUS(187) 加 Shift。
+    chord = key_chord(187 | 0x100)
+    assert chord == (187, True, False, False)
+    assert chord_events(*chord) == [
+        ("down", VK_SHIFT),
+        ("down", 187),
+        ("up", 187),
+        ("up", VK_SHIFT),
+    ]
+    assert key_chord(-1) is None
+    assert unicode_events("+") == [("unicode", 0x2B)]
 
 
 def test_roi_helpers() -> None:

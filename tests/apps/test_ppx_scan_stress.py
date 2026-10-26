@@ -14,13 +14,13 @@ from ppx_testkit.apps.pctool.ppx_scan_stress import (
 from ppx_testkit.exceptions import ConfigError, TestAbort, WindowNotFoundError
 from ppx_testkit.settings import from_dict, load_settings
 
-VIN = "P30101RZKUS6900002"
+VIN = "P30101RZKUS6900007"
 BARCODES = (
-    ("左力矩", "WL680004409882+16"),
-    ("右力矩", "WR680004408644+01"),
-    ("左电机", "PX01-8120Y063203608"),
-    ("右电机", "PX01-8120Y063203616"),
-    ("电池", "AV06002LH201F9030111"),
+    ("左力矩", "WL680004909715-05"),
+    ("右力矩", "WR680003207269+27"),
+    ("左电机", "PX01-8120Y064100028"),
+    ("右电机", "PX01-8120Y063500294"),
+    ("电池", "AV06002LH201F9030150"),
 )
 
 
@@ -78,8 +78,10 @@ class FakeScreen:
         self.click_origins: list[tuple[int, int] | None] = []
         self.texts: list[str] = []
         self.enters: list[bool] = []
+        self.literals: list[bool] = []
         self.hotkeys: list[tuple[str, ...]] = []
         self.presses: list[str] = []
+        self.clears: list[bool] = []
         self.shots: list[Path] = []
 
     def click(self, point: tuple[int, int], *, label: str = "") -> None:
@@ -97,6 +99,20 @@ class FakeScreen:
         self.texts.append(text)
         self.enters.append(enter)
 
+    def replace_text(
+        self,
+        text: str,
+        *,
+        enter: bool = False,
+        clear: bool = True,
+        literal: bool = False,
+        interval: float = 0.03,
+    ) -> None:
+        self.texts.append(text)
+        self.enters.append(enter)
+        self.clears.append(clear)
+        self.literals.append(literal)
+
     def save_screenshot(self, path: Path) -> Path | None:
         self.shots.append(path)
         return path
@@ -106,10 +122,15 @@ class FakeButtons:
     def __init__(self, ok: bool) -> None:
         self.ok = ok
         self.calls: list[tuple[str, str, float]] = []
+        self.focuses: list[tuple[str, int]] = []
 
     def click_button(self, title_re: str, button: str, timeout_s: float) -> bool:
         self.calls.append((title_re, button, timeout_s))
         return self.ok
+
+    def focus_edit(self, title_re: str, index: int) -> bool:
+        self.focuses.append((title_re, index))
+        return False
 
 
 def _cycle(
@@ -136,14 +157,28 @@ def test_track_point_locks_then_follows() -> None:
 def test_station_yaml_keeps_vin_and_barcode_order() -> None:
     settings = load_settings("ppx_pctool_stress", use_local=False, environ={})
     cfg = settings.section("stress", PpxScanStressConfig)
-    assert cfg.vin == VIN
-    assert [(item.label, item.text) for item in cfg.barcodes] == list(BARCODES)
+    assert cfg.vin == "P30101RZKUS6900002"
+    assert [(item.label, item.text) for item in cfg.barcodes] == [
+        ("左力矩", "WL680004409882+16"),
+        ("右力矩", "WR680004408644+01"),
+        ("左电机", "PX01-8120Y063203608"),
+        ("右电机", "PX01-8120Y063203616"),
+        ("电池", "AV06002LH201F9030111"),
+    ]
     assert cfg.popup_wait_s == 2
     assert cfg.settle_wait_s == 20
     assert cfg.torque_title == "力矩校验"
     assert cfg.torque_confirm_click == (874, 681)
     assert cfg.after_torque_click_s == 10
     assert cfg.cycles == 100
+
+
+def test_leading_space_is_removed_before_paste() -> None:
+    spaced = [{"label": label, "text": f" {text} "} for label, text in BARCODES]
+    cycle, screen, _, _, _ = _cycle(_cfg(vin=f" {VIN} ", barcodes=spaced))
+    cycle.run_cycle(1)
+    assert screen.texts[0] == VIN
+    assert screen.texts[1:] == [text for _, text in BARCODES]
 
 
 def test_config_rejects_empty_flow() -> None:
@@ -161,10 +196,11 @@ def test_one_cycle_types_vin_then_each_barcode_with_enter() -> None:
     assert result.passed
     assert windows.activated == ["PPX PCTOOL"]
     assert screen.clicks == [((500, 200), "VIN输入框")]
-    assert screen.hotkeys == [("ctrl", "a")]
-    assert screen.presses == ["backspace"]
+    assert screen.clears == [True, False, False, False, False, False]
     assert screen.texts == [VIN, *[text for _, text in BARCODES]]
     assert screen.enters == [True] * 6
+    assert screen.literals == [False, True, True, True, True, True]
+    assert buttons.focuses == []
     assert [call[1] for call in buttons.calls] == ["确认", "确认"]
     assert "扫码" in buttons.calls[0][0]
     assert "力矩校验" in buttons.calls[1][0]

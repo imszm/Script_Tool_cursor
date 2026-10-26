@@ -15,8 +15,9 @@
 #   5. 等 settle_wait_s，弹出「力矩校验」
 #   6. 再点一次「确认」（先按按钮标题，点不到用 torque_confirm_click）
 #   7. 等 after_torque_click_s，再开始下一轮
-# 扫码五项不用再点输入框：弹窗出来后焦点在「左力矩」，每条输完回车才会进入下一格。
-# 输入法请切到英文，否则条码里的字母和 + 可能被中文输入法吃掉。
+# 扫码五项不要点输入框。弹窗出来后焦点在第一格，模拟键盘输入后必须按回车，才会进入下一格。
+# 条码里的 + 按 Shift 组合键送出。不要在条码前按 Ctrl+A，否则回车不会被当成这一格结束。
+# 车架号仍粘贴剪贴板，避免长跑后输入法在开头多出一个空格。
 # 停止：Ctrl+C，或把鼠标移到屏幕左上角。
 station: ppx_pctool_stress
 app: pctool.ppx_scan_stress
@@ -29,7 +30,7 @@ stress:
   cycles: 100
   startup_delay_s: 3
   vin: "P30101RZKUS6900002"
-  vin_click: [1328, 138]
+  vin_click: [1737, 145]
   confirm_click: [861, 705]
   follow_window: true
   confirm_by_name: true

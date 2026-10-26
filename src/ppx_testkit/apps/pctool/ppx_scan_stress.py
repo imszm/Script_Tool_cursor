@@ -8,7 +8,8 @@
     -> 等待力矩校验窗口 -> 再点击一次「确认」
     -> 至少再等 after_torque_click_s 秒 -> 进入下一轮
 
-五项条码不再逐个点击输入框：弹窗打开后焦点在第一格，回车会跳到下一格，和扫码枪一致。
+五项条码不要点输入框。弹窗打开后焦点在第一格，模拟键盘逐键输入并回车，上位机才会进入下一格。
+条码中的 ``+`` 按 Shift 组合键送入。输入前不要 Ctrl+A，否则这一格的回车不会被当成扫码结束。
 ``vin_click`` / ``confirm_click`` / ``torque_confirm_click`` 填屏幕绝对坐标（``mouse_locate`` 打出来的 X,Y）。
 ``follow_window`` 为 true 时，以第一轮看到的窗口左上角为原点，之后窗口被拖走，点击跟着平移。
 """
@@ -148,6 +149,17 @@ class ClickScreen(Protocol):
     def type_text(self, text: str, *, interval: float = 0.02, enter: bool = False) -> None:
         """逐字输入。``enter`` 为 True 时末尾再按回车。"""
 
+    def replace_text(
+        self,
+        text: str,
+        *,
+        enter: bool = False,
+        clear: bool = True,
+        literal: bool = False,
+        interval: float = 0.03,
+    ) -> None:
+        """清空当前输入框后写入原文。``literal`` 为 True 时逐键输入，否则粘贴。"""
+
     def save_screenshot(self, path: Path) -> Path | None:
         """保存全屏截图。失败返回 None。"""
 
@@ -168,6 +180,9 @@ class ButtonClicker(Protocol):
     def click_button(self, title_re: str, button: str, timeout_s: float) -> bool:
         """点击按钮。成功返回 True。"""
 
+    def focus_edit(self, title_re: str, index: int) -> bool:
+        """把弹窗里从上到下第 ``index`` 个输入框点成焦点。点不到返回 False。"""
+
 
 class NullButtonClicker:
     """不连接控件，确认按钮始终走坐标。"""
@@ -178,6 +193,15 @@ class NullButtonClicker:
         :param title_re: 弹窗标题正则，此处忽略。
         :param button: 按钮文字，此处忽略。
         :param timeout_s: 等待秒数，此处忽略。
+        :return: 恒为 False。
+        """
+        return False
+
+    def focus_edit(self, title_re: str, index: int) -> bool:
+        """没有控件连接，无法聚焦输入框。
+
+        :param title_re: 弹窗标题正则，此处忽略。
+        :param index: 输入框序号，此处忽略。
         :return: 恒为 False。
         """
         return False
@@ -201,6 +225,35 @@ class AppButtonClicker:
             return bool(self._window.confirm_dialog(title_re, button, timeout_s))
         except Exception as exc:  # noqa: BLE001 - 控件点击失败时改走坐标
             log.warning("按名称点击 %s / %s 失败: %s", title_re, button, exc)
+            return False
+
+    def focus_edit(self, title_re: str, index: int) -> bool:
+        """点击扫码弹窗里从上到下的第几个输入框，让随后的按键落进去。
+
+        :param title_re: 弹窗标题正则。
+        :param index: 从 0 开始，0 是最上面一格。
+        :return: 是否已点击该输入框。失败时返回 False，调用方仍会向当前焦点逐键输入。
+        """
+        if self._window.app is None:
+            return False
+        try:
+            dialog = self._window.app.window(title_re=title_re)
+            if not dialog.exists(timeout=0.5):
+                return False
+            edits = []
+            for edit in dialog.descendants(control_type="Edit"):
+                rect = edit.element_info.rectangle
+                if rect.right <= rect.left or rect.bottom <= rect.top:
+                    continue
+                edits.append(edit)
+            edits.sort(key=lambda edit: (edit.element_info.rectangle.top, edit.element_info.rectangle.left))
+            if index >= len(edits):
+                log.warning("扫码窗口只有 %d 个输入框，无法聚焦第 %d 个", len(edits), index + 1)
+                return False
+            edits[index].click_input()
+            return True
+        except Exception as exc:  # noqa: BLE001 - 聚焦失败时改为向当前焦点输入
+            log.warning("聚焦扫码第 %d 个输入框失败: %s", index + 1, exc)
             return False
 
 
@@ -309,11 +362,7 @@ class PpxScanStressCycle:
         vin_point = self._resolve("vin", cfg.vin_click, (main[0], main[1]))
         self.screen.click(vin_point, label="VIN输入框")
         self._sleep(cfg.after_click_s)
-        if cfg.clear_before_type:
-            self.screen.hotkey("ctrl", "a")
-            self.screen.press("backspace")
-        log.info("输入车架号并回车: %s", cfg.vin)
-        self.screen.type_text(cfg.vin, interval=cfg.type_interval_s, enter=True)
+        self._submit_text(cfg.vin, "输入车架号并回车")
         self._sleep(cfg.popup_wait_s)
         dialog = self.windows.rect(cfg.dialog_title)
         if cfg.require_dialog and dialog is None:
@@ -327,9 +376,10 @@ class PpxScanStressCycle:
             point = self._resolve("first_field", cfg.first_field_click, origin)
             self.screen.click(point, label="扫码第一格")
             self._sleep(cfg.after_click_s)
+        # 扫码窗自己把焦点放在第一格。只模拟键盘并回车，回车后上位机才跳到下一格。
+        # 再点输入框或 Ctrl+A 会打断这个焦点，后面的字进不去。
         for item in cfg.barcodes:
-            log.info("输入%s: %s", item.label, item.text)
-            self.screen.type_text(item.text, interval=cfg.type_interval_s, enter=True)
+            self._submit_text(item.text, f"输入{item.label}", literal=True)
             self._sleep(cfg.after_enter_s)
         self._confirm(dialog)
         log.info("等待 %.0f 秒，等「%s」窗口弹出", cfg.settle_wait_s, cfg.torque_title)
@@ -337,6 +387,27 @@ class PpxScanStressCycle:
         self._confirm_torque()
         log.info("力矩校验确认后等待 %.0f 秒，再开始下一轮", cfg.after_torque_click_s)
         self._sleep(cfg.after_torque_click_s)
+
+    def _submit_text(self, text: str, label: str, *, literal: bool = False) -> None:
+        """去掉首尾空白后写入当前输入框并回车。
+
+        车架号粘贴剪贴板，避免中文输入法在开头插入空格。扫码条码改走模拟键盘：
+        每条逐键输入后再按回车，上位机才接收这一条并跳到下一格。条码输入前不清空，
+        Ctrl+A 会把这一格的回车吃掉。
+
+        :param text: 配置中的车架号或条码。
+        :param label: 写进日志的动作名。
+        :param literal: True 时逐键输入并回车。条码为 True，车架号为 False。
+        """
+        cleaned = text.strip()
+        log.info("%s: %s", label, cleaned)
+        self.screen.replace_text(
+            cleaned,
+            enter=True,
+            clear=self.cfg.clear_before_type and not literal,
+            literal=literal,
+            interval=self.cfg.type_interval_s,
+        )
 
     def _require_main(self) -> Rect:
         """读取主窗口矩形。不存在时熔断。
