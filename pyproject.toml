@@ -35,6 +35,8 @@ report = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
+    "pytest-cov>=5.0",
+    "pytest-timeout>=2.3",
 ]
 
 [project.scripts]
@@ -51,6 +53,8 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra -m 'not hardware'"
+timeout = 120
+timeout_method = "thread"
 markers = [
     "hardware: 需要连接真实串口/继电器/被测设备，默认跳过（pytest -m hardware 手动执行）",
 ]

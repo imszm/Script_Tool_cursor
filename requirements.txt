@@ -1,20 +1,28 @@
-# 与 pyproject.toml 对齐。推荐安装：
-#   python -m pip install -e ".[win,gui,report,dev]"
-#
-# 基础
+# 与 pyproject.toml 的 dependencies / optional-dependencies 版本约束一致。
+# 推荐安装：python -m pip install -e ".[win,gui,report,dev]"
+# 只装本文件：python -m pip install -r requirements.txt
+# 开发与 CI：python -m pip install -r requirements-dev.txt
+
+# 串口与配置
 pyserial>=3.5
 PyYAML>=6.0
 
-# report
+# 测试报告与 Excel 解析
+# CSV / HTML 报告使用标准库。xlsx 用例走 pandas，openpyxl 是 read_excel 的引擎。
+# chardet 只在 UTF-8 / GB18030 都解不开时做编码回退。
 pandas>=2.0
 openpyxl>=3.1
 chardet>=5.0
 
-# win（仅 Windows）
+# Windows 桌面自动化
+# pywin32：utils/notify.py 的消息框。
+# pywinauto：core/gui/window.py、core/gui/process.py 的窗口与控件。
 pywin32>=306; sys_platform == "win32"
 pywinauto>=0.6.8; sys_platform == "win32"
 
-# gui
+# GUI 自动化与图像识别
+# pyautogui 截图返回 Pillow 图像，导入时依赖 pygetwindow。
+# opencv-python / numpy：屏幕 HSV 绿灯判定与失败截图标注。
 pyautogui>=0.9.54
 pygetwindow>=0.0.9
 psutil>=5.9
@@ -22,6 +30,5 @@ pillow>=10.0
 opencv-python>=4.8
 numpy>=1.26
 
-# dev
-pytest>=8.0
-ruff>=0.5
+# Web 控制台
+# web/server.py 使用标准库 http.server，没有额外第三方包。配置解析复用上面的 PyYAML。

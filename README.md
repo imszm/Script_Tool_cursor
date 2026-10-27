@@ -1,137 +1,168 @@
 # ppx_testkit — 嵌入式整机测试工具集
 
-用于四轮电动代步车和电动轮椅的自动化测试：继电器开关机与充电压测、舵机刷卡、灯板与主控白盒、刹车专项、SMT/FCT、总装升级，以及车速、时间差等小工具。
+用于四轮电动代步车和电动轮椅的自动化测试：FCT、白盒协议、继电器上下电、PC 工具点击、灯光、电机、充电和舵机，以及坐标、车速等辅助工具。
 
-新入口统一为 `ppx-test`。旧的独立脚本目录已经删除，需要对照时看 git 历史。目录怎么读、一条命令怎么执行，见 [使用说明书](docs/user_guide.md)。
+环境：Python 3.11 及以上。Windows 工位需要串口、继电器，以及可选的图形界面依赖。详细字段说明、日志和退出码见 [使用说明书](docs/user_guide.md)。
 
-## 环境
+## 快速开始
 
-- Python 3.11 及以上（开发与 CI 使用 3.11）
-- Windows 工位需要串口、继电器，以及可选的图形界面依赖
+### 1. Windows 批处理
+
+在项目根目录双击或执行：
 
 ```bat
 scripts\setup_env.bat
 ```
 
-或手动：
-
-```bash
-python -m venv .venv
-.venv\Scripts\python -m pip install -e ".[win,gui,report,dev]"
-copy config\local.yaml.example config\local.yaml
-```
-
-`config/local.yaml` 只放本机串口号，不入库。工位 yaml 不写死 `COM` 口；用 `--port 名称=COM5` 或 `local.yaml` 覆盖。
-
-## 运行
-
-不想记命令时，双击 `scripts\start_ui.bat`。浏览器打开本机页面，选择工位、串口和这一次的轮次后开始。页面只监听这台电脑，同一时间只能跑一场。
-
-双击 `scripts\run_station.bat` 只列出工位，然后停在按键提示，不会开始测试。要跑工位，在项目根目录打开终端再输入命令。
-
-第一次接通硬件时加上次数限制。`relay_power_cycle` 的默认次数是 20 万轮，失败时继电器保持上电：
+脚本会创建 `.venv`，执行 `pip install -e ".[win,gui,report,dev]"`，并在缺少时从 `config\local.yaml.example` 复制 `config\local.yaml`。接着把本机串口改进 `config\local.yaml`。
 
 ```bat
+scripts\start_ui.bat
+scripts\run_station.bat
 scripts\run_station.bat relay_power_cycle --set test.cycles=2 --port relay=COM3 --port device=COM13
 ```
 
-`COM3`、`COM13` 只是旧脚本示例。本机端口用 `ppx-test ports` 查看，并写进 `config\local.yaml`。
+`start_ui.bat` 打开本机网页控制台。`run_station.bat` 不带参数时只列出工位，不会开始测试。带工位名时运行测试，控制台输出另存 `logs\console_<工位>_<时间>.log`。`COM3`、`COM13` 是示例，先用 `ports` 看本机端口。`relay_power_cycle` 默认轮次很大，第一次接通硬件请加上 `--set test.cycles=2`。
 
-等价命令：
+### 2. Web 控制台
 
-```bash
-ppx-test list
-ppx-test ports
-ppx-test show relay_power_cycle
-ppx-test run relay_power_cycle --set test.cycles=2
+```bat
+python -m ppx_testkit.web
 ```
+
+等价命令是 `python -m ppx_testkit ui` 或 `ppx-test ui`。浏览器打开 `http://127.0.0.1:8765`。页面只监听本机，同一时间只能跑一场。可选 `--port 8765` 改网页端口，`--no-browser` 不自动打开浏览器。网页写入 `config/local.yaml` 的串口，轮次只对这一次生效。
+
+### 3. 命令行
+
+安装后 `ppx-test` 与 `python -m ppx_testkit` 是同一个入口。
+
+```bat
+python -m ppx_testkit list
+python -m ppx_testkit ports
+python -m ppx_testkit show relay_power_cycle
+python -m ppx_testkit run relay_power_cycle --set test.cycles=2 --port relay=COM3 --port device=COM13
+python -m ppx_testkit ui --port 8765
+```
+
+`--port 名称=COMx` 覆盖该路串口。`--set a.b=value` 覆盖任意配置项，可重复。`--no-local` 忽略 `config/local.yaml`。
 
 退出码：0 通过，1 未通过，2 配置错误，3 硬件或通信故障，130 用户中断。
 
-每次运行在 `logs/<工位>/<YYYYmmdd_HHMMSS>/` 下保存：
+每次运行在 `logs/<工位>/<YYYYmmdd_HHMMSS>/` 下保存 `full.log`、`error.log`、`device_raw.log`、`config.yaml`、`summary.json`。
 
-| 文件 | 内容 |
-| --- | --- |
-| `full.log` | 全程日志，含 DEBUG 与串口收发十六进制 |
-| `error.log` | WARNING 及以上 |
-| `device_raw.log` | 被测设备原始串口输出（按大小轮转） |
-| `config.yaml` | 本次生效配置 |
-| `summary.json` | 运行统计 |
+## 工站全景
 
-`scripts\run_station.bat` 另外把控制台输出保存到 `logs/console_<工位>_<时间戳>.log`。
+`config/stations/` 下 30 个工位。应用入口是 yaml 里的 `app:`，对应 `src/ppx_testkit/apps/<app>.py` 的 `run(settings, ctx)`。命令行写成 `ppx-test run <工位>`。
 
-## 配置优先级
+### FCT 产测
 
-后者覆盖前者：
+| 工位 | 机型 | 应用入口 | 说明 |
+| --- | --- | --- | --- |
+| `p3_fct` | P3 | `fct.p3_fcb` | 多通道 SMT/FCT，SN 递增，绿灯状态机 |
+| `r3_leb_fct` | R3 | `fct.r3_leb` | LEB SMT，扫码加屏幕颜色判定 |
+| `r3_mcb_fct` | R3 | `fct.r3_mcb` | MCB SMT，继电器上下电加屏幕颜色判定 |
+
+### 白盒与协议诊断
+
+| 工位 | 机型 | 应用入口 | 说明 |
+| --- | --- | --- | --- |
+| `l5_lcb_ble` | L5 | `whitebox.lcb_ble` | 灯板 BLE，Excel/CSV 用例 |
+| `mcb_whitebox` | L5 | `whitebox.mcb_region` | MCB 白盒，region v1 |
+| `l5_mcb_hall_diag` | L5 | `whitebox.mcb_hall_diag` | MCB 霍尔体检 |
+| `r3_mcb_whitebox` | R3 | `whitebox.r3_mcb` | MCB 电机白盒，菜单 / 自动 / 稳定性 |
+| `lrd_debug` | L5 | `whitebox.lrd_debug` | 灯板单次点灯并回读。逻辑在 `tools/lrd_debug.py` |
+
+### 上下电与继电器压测
+
+| 工位 | 机型 | 应用入口 | 说明 |
+| --- | --- | --- | --- |
+| `relay_power_cycle` | 通用 | `power_cycle.relay_power_on` | 继电器开关机。失败默认保持上电 |
+| `nfc_power_cycle` | 通用 | `power_cycle.relay_power_on` | NFC 开关机，异常关键字熔断断电 |
+| `handle_power_cycle` | 通用 | `power_cycle.relay_power_on` | 把手继电器循环，不读设备日志 |
+| `w3_power_button` | W3 | `power_cycle.power_button` | 电源键开关机，命中停止关键字保留现场 |
+| `relay_probe` | 通用 | `power_cycle.relay_probe` | 继电器极性人工探测。逻辑在 `tools/relay_probe.py` |
+
+### PCTool 与整机 GUI 压测
+
+| 工位 | 机型 | 应用入口 | 说明 |
+| --- | --- | --- | --- |
+| `l5_pctool_stress` | W3 | `pctool.l5_upgrade_stress` | 按钮压力，窗口 `W3 PCTOOL V5.5.00` |
+| `l5_fixture_relay_stress` | L5 | `pctool.l5_upgrade_stress` | 治具左右灯，ICSE 继电器，无窗口 |
+| `w3_pctool_stress` | W3 | `pctool.w3_pctool_stress` | 点击压力，坐标见 `w3_pctool_clicks.yaml` |
+| `w3_assembly_stress` | W3 | `pctool.w3_pctool_stress` | 与上一工位同一套点击序列 |
+| `ppx_pctool_stress` | 通用 | `pctool.ppx_scan_stress` | PPX PCTOOL 车架号与扫码弹窗 |
+| `upgrade_log_stress` | L5 | `pctool.upgrade_log_stress` | 升级日志关键字，窗口 `L5 PCTOOL V3.9.00` |
+| `r3_assembly_upgrade` | R3 | `assembly.r3_assembly_upgrade` | 总装 VIN / 部件 SN 录入与升级确认 |
+
+### 灯光 / 电机 / 充电 / 舵机
+
+| 工位 | 机型 | 应用入口 | 说明 |
+| --- | --- | --- | --- |
+| `turn_signal` | 通用 | `lamp.turn_signal` | 转向灯。`--set lamp.variant=formal` 等 |
+| `headlight` | 通用 | `lamp.headlight` | 前灯。`--set lamp.variant=spec` 或 `no_spec` |
+| `l5_charge_cycle` | L5 | `charge.charge_cycle` | 继电器充电压测 |
+| `r3_charge_cycle` | R3 | `charge.charge_cycle` | 继电器充电压测 |
+| `r3_brake_lock_unlock` | R3 | `motor.brake_lock_unlock` | 电磁刹车解锁 / 上锁，单线程顺序执行 |
+| `servo_nfc` | 通用 | `servo.servo_nfc` | 舵机刷 NFC |
+
+### 辅助工具
+
+| 工位 | 机型 | 应用入口 | 说明 |
+| --- | --- | --- | --- |
+| `mouse_locate` | 通用 | `pctool.mouse_locate` | 鼠标坐标采样。逻辑在 `tools/mouse_locate.py` |
+| `inspect_controls` | 通用 | `pctool.inspect_controls` | 导出窗口控件名 |
+| `speed_calc` | 通用 | `calculators.speed_calc` | 车速计算。逻辑在 `tools/calculators/speed_calc.py` |
+| `time_diff` | 通用 | `calculators.time_diff` | 时间差。逻辑在 `tools/calculators/time_diff.py` |
+
+FCT 和 W3 点击压测的坐标是旧屏幕上的绝对坐标。换电脑后用 `mouse_locate` 重采，控件名用 `inspect_controls` 核对。
+
+## 架构概览与扩展
+
+```
+config/default.yaml
+config/local.yaml                 本机串口，不入库
+config/stations/*.yaml            30 个工位
+config/stations/_fragments/       关键字、继电器口、W3 点击坐标
+src/ppx_testkit/
+  cli.py  __main__.py             python -m ppx_testkit
+  settings.py  station_schema.py  配置合并与校验
+  logger.py
+  core/     serial  relay  protocol  monitor  runner  report  gui
+  profiles/ l5.py  p3.py  r3.py
+  apps/     工站流程；部分文件只重导出 tools
+  tools/    calculators  mouse_locate  relay_probe  lrd_debug  r3_menu
+  web/      python -m ppx_testkit.web
+resources/dll/l5/   resources/dll/r3/   resources/dll/manifest.json
+resources/include/  头文件
+scripts/            setup_env.bat  start_ui.bat  run_station.bat
+tests/core  tests/apps            离线 Fake
+tests/hardware                    真实串口 / 继电器
+```
+
+配置文件优先级（后者覆盖前者）：
 
 1. `config/default.yaml`
-2. `config/stations/<工位>.yaml`（可用 `include:` 引入 `config/stations/_fragments/` 公共片段）
+2. `config/stations/<工位>.yaml`（`include:` 引入 `_fragments/`）
 3. `config/local.yaml`（顶层对所有工位生效，`stations.<工位名>` 只对该工位生效）
-4. 环境变量 `PPX__A__B`
-5. 命令行 `--set a.b=value` 或 `--port 名称=COM5`
 
-已注册的配置段在启动时校验：未知字段、类型不符、缺少必填项都会失败，不会带着错误配置跑测试。
+其后还有环境变量 `PPX__A__B` 和命令行 `--set` / `--port`。已注册的配置段在启动时由 `station_schema.py` 校验。
 
-## 目录
+新增一个工位：
 
-```
-config/stations/          工位配置
-config/stations/_fragments/  继电器口、公共关键字等片段
-src/ppx_testkit/
-  cli.py                  ppx-test 入口
-  settings.py             配置加载与启动校验
-  logger.py               每次运行独立日志目录
-  apps/                   各工位流程（只编排，不直接操作 pyserial / ctypes）
-  core/                   串口、继电器、关键字监控、PPX v1/v2、压测执行器、报告、GUI
-resources/                DLL、头文件、图片、用例模板
-tests/                    无硬件单测；需要实机的用例标记 hardware
-scripts/                  Windows 环境安装与工位启动
-```
+1. 在 `config/stations/` 新建 `<工位名>.yaml`，能复用的继电器口、关键字和点击坐标用 `include` 引用 `_fragments/`。
+2. `app:` 指向已有模块，或在 `src/ppx_testkit/apps/<域>/` 实现 `run(settings, ctx) -> int`。辅助工具的流程写在 `tools/`，`apps/` 只做重导出。
+3. 在 `src/ppx_testkit/station_schema.py` 登记该应用的配置段和串口名。
+4. 串口号只写 `config/local.yaml` 或通过 `--port` 传入。
+5. 先 `ppx-test show <工位名>`，再限制轮次试跑。
 
-应用模块实现 `run(settings, ctx) -> int`。串口名在配置的 `serial.<名称>` 下，继电器用 `relay` 或 `relays.<名称>`，设备日志用 `device`。
-
-L5 与 R3 的 `ppx_region.dll` 同名但接口不同，分别放在 `resources/dll/l5` 和 `resources/dll/r3`，不合并加载器。
-
-## 工位一览
-
-| 工位 | 应用 | 来源 |
-| --- | --- | --- |
-| `relay_power_cycle` / `nfc_power_cycle` / `handle_power_cycle` | 继电器开关机 | `Tool/继电器开关机压力测试.py`、`NFC开关机异常关键字检测.py`、`把手自动化开关.py` |
-| `relay_probe` | 继电器通道手动点动 | `Tool/查看继电器状态.py` |
-| `w3_power_button` | W3 开关机（精确匹配） | `Tool/W3继电器开关机压力测试.py` |
-| `l5_charge_cycle` / `r3_charge_cycle` | 充电压测 | `Tool/继电器充电压力测试_L5.py`、`_R3.py` |
-| `servo_nfc` | 舵机刷 NFC | `Tool/舵机压力测试_V1_1.py` |
-| `l5_lcb_ble` | L5 灯板 BLE 用例 | BLE 自动化工具 V1.6 |
-| `mcb_whitebox` / `l5_mcb_hall_diag` | L5 MCB 白盒 / 霍尔诊断 | mcb V1.4.6 / V1.4.7 |
-| `r3_mcb_whitebox` | R3 MCB 白盒 | `PPX_MCB_V2.PY` |
-| `lrd_debug` | 灯板单次点灯并回读 | `Tool/LRD调试程序.py` |
-| `r3_brake_lock_unlock` | 电磁刹车解锁上锁 | 优化完整版，单线程顺序执行；超温保护默认关闭 |
-| `r3_leb_fct` / `r3_mcb_fct` / `p3_fct` | SMT/FCT | 对应系列脚本 |
-| `r3_assembly_upgrade` | R3 总装升级 | `R3组装升级.py` |
-| `l5_pctool_stress` | W3 PC 工具按钮压力 | `PC_tool_工具软件压力测试-V1.2.py`（窗口 `W3 PCTOOL V5.5.00`） |
-| `l5_fixture_relay_stress` | 治具左右灯（ICSE，无窗口） | `治具工具软件压力测试（带继电器版）-V1.3.py` |
-| `w3_pctool_stress` / `w3_assembly_stress` | W3 点击压力 | 同一来源：`Tool/组装生产工具压力测试.py` |
-| `ppx_pctool_stress` | PPX PCTOOL 车架号与扫码弹窗压力 | 新工位。先改 `config/stations/ppx_pctool_stress.yaml` 里的坐标 |
-| `upgrade_log_stress` | L5 升级日志关键字压力 | `Tool/升级工具压力自动化测试 - 可截图版本.py` |
-| `inspect_controls` | 读取窗口控件 | `识别读取应用窗口控件.py` |
-| `mouse_locate` | 鼠标坐标采样 | `Tool/鼠标定位脚本.py` |
-| `turn_signal` / `headlight` | 转向灯、前灯 | `Tool/TestTurnSignals`、`TestHeadlights` |
-| `speed_calc` / `time_diff` | 车速、时间差 | `Tool/` 下对应脚本 |
-
-FCT 和 W3 点击压测里的坐标是旧脚本在原屏幕上的绝对坐标。换电脑或改窗口位置后，用 `mouse_locate` 重采，控件名用 `inspect_controls` 核对。
-
-`r3_brake_lock_unlock` 相对最早的双线程加本地 TCP 版本，已改为单线程顺序执行。并发路径不恢复，差异留到实机核对。
-
-## 旧脚本
-
-`Tool/`、`L5_CCB&MCB白盒测试/`、`L5系列SMT&组装升级测试工具/`、`R3_MCB白盒测试/`、`R3电机专项测试/`、`R3系列总装测试工具/`、`P3系列SMT&组装升级测试工具/` 已从仓库删除。工位行为以 `ppx-test run <工位>` 为准。上面表格里的旧文件名只说明是从哪份脚本迁来的，目录里已经没有这些文件。DLL 和头文件只使用 `resources/`。
+字段含义、旧脚本对照和改哪一份配置，见 [docs/user_guide.md](docs/user_guide.md)。
 
 ## 开发
 
 ```bash
-ruff check src tests
-python -m pytest
-python -m pytest -m hardware   # 需要连接真实设备，默认不跑
+ruff check .
+pytest --ignore=tests/hardware
+pytest -m hardware
 ```
 
-协议结构体与 `resources/include` 下的 C 头文件逐字段比对。
+协议结构体与 `resources/include` 下的 C 头文件逐字段比对。L5 与 R3 的 `ppx_region.dll` 分目录存放，不合并加载器。
