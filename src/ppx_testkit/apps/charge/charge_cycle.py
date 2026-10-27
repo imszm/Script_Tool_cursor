@@ -37,6 +37,7 @@ from ppx_testkit.apps.power_cycle._common import (
     require_runner_options,
     try_reconnect,
 )
+from ppx_testkit.core.context import HardwareContext
 from ppx_testkit.core.factory import (
     build_monitor,
     close_ports,
@@ -115,6 +116,7 @@ class ChargeCycle:
         self._sleep = sleep
         self._rng = rng or random.Random()
         self._closed = False
+        self._power_settled = False
         self.disconnects = 0
 
     # ------------------------------------------------------------ StressCycle
@@ -196,6 +198,7 @@ class ChargeCycle:
                     log.error("退出时断开继电器失败: %s", exc)
         finally:
             close_ports(self.relay.transport, self.monitor.transport)
+            self._power_settled = True
             exceptions = getattr(self.monitor, "exception_count", None)
             if exceptions is None:
                 exceptions = self.monitor.evaluator.exception_count
@@ -227,11 +230,34 @@ def run(
     keyword_config(settings)
     log.info("运行目录: %s", ctx.run_dir or "<仅控制台>")
 
-    ports = open_ports(
-        settings, [("relay", not relay_cfg.open_per_command), ("device", True)], factory=factory, finder=finder
-    )
+    relay: RelayDriver | None = None
     monitor: DeviceLogMonitor | Any | None = None
-    try:
+    cycle: ChargeCycle | None = None
+
+    def _stop_watch() -> None:
+        """停掉按块读取线程。teardown 已经停过时再调也无效果。"""
+        if monitor is not None and hasattr(monitor, "stop"):
+            monitor.stop()
+
+    def _cut_relay() -> None:
+        """teardown 未完成时强制断开充电继电器。"""
+        if cycle is not None and cycle._power_settled:
+            return
+        if relay is None:
+            return
+        try:
+            relay.all_off()
+        except HardwareError as exc:
+            log.error("紧急断电失败: %s", exc)
+
+    with HardwareContext() as hw:
+        ports = open_ports(
+            settings, [("relay", not relay_cfg.open_per_command), ("device", True)], factory=factory, finder=finder
+        )
+        for name, transport in ports.items():
+            hw.register_emergency_stop(transport.close, name=f"释放串口-{name}")
+        hw.register_emergency_stop(_stop_watch, name="stop-monitor")
+        hw.register_emergency_stop(_cut_relay, name="relay-off")
         relay = relay_from_settings(settings, ports["relay"])
         if cfg.listen == "chunk":
             from ppx_testkit.core.factory import build_chunk_monitor
@@ -248,8 +274,4 @@ def run(
             max_consecutive_failures=cfg.max_consecutive_failures,
             interval_s=cfg.interval_s,
         ).run()
-    finally:
-        if monitor is not None and hasattr(monitor, "stop"):
-            monitor.stop()
-        close_ports(*ports.values())
     return finish(summary, title="继电器充电压测", notify=cfg.notify)

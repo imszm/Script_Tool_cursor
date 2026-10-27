@@ -20,7 +20,11 @@ _MAX_LINES = 4000
 
 
 class RunSession:
-    """子进程运行 ppx-test，并把标准输出留在内存里供网页轮询。"""
+    """用独立子进程运行 ppx-test，并把标准输出留在内存里供网页轮询。
+
+    L5 / R3 的 DLL 带有进程级全局状态。每一场测试都新起进程，结束或停止时进程退出，
+    句柄和 DLL 状态一起释放。网页进程本身不加载这些 DLL。
+    """
 
     def __init__(self, popen: PopenFactory = subprocess.Popen) -> None:
         self._popen = popen
@@ -162,7 +166,11 @@ class RunSession:
 
 
 def _interrupt(proc: subprocess.Popen[str]) -> None:
-    """让子进程收到键盘中断。Windows 用 Ctrl+Break，其他系统用 SIGINT。"""
+    """让子进程走 KeyboardInterrupt，从而执行 HardwareContext.close_safely。
+
+    Windows 上 Ctrl+C 会打到整个控制台，包括网页进程，所以对新建的进程组发 Ctrl+Break。
+    子进程在 ``cli`` 里把 SIGBREAK 转成 KeyboardInterrupt。其他系统直接发 SIGINT。
+    """
     if os.name == "nt":
         os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
         return

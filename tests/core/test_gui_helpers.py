@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
+import types
 
 import pytest
 
+from ppx_testkit.core.gui.process import TitleWindowProbe
 from ppx_testkit.core.gui.screen import (
     VK_SHIFT,
     Screen,
@@ -44,6 +47,24 @@ def test_plus_chord_presses_shift_and_releases_it() -> None:
     ]
     assert key_chord(-1) is None
     assert unicode_events("+") == [("unicode", 0x2B)]
+
+
+def test_titles_lists_visible_top_level_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Element:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    def find_elements(**kwargs: object) -> list[Element]:
+        assert kwargs.get("visible_only") is True
+        return [Element("PPX PCTOOL V2.5.00"), Element(""), Element("PPX PCTOOL V2.5.00"), Element("Cursor")]
+
+    findwindows = types.ModuleType("pywinauto.findwindows")
+    findwindows.find_elements = find_elements  # type: ignore[attr-defined]
+    package = types.ModuleType("pywinauto")
+    package.findwindows = findwindows  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pywinauto", package)
+    monkeypatch.setitem(sys.modules, "pywinauto.findwindows", findwindows)
+    assert TitleWindowProbe().titles() == ["PPX PCTOOL V2.5.00", "Cursor"]
 
 
 def test_roi_helpers() -> None:

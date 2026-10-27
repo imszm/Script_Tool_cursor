@@ -17,9 +17,11 @@ run 选项：
 from __future__ import annotations
 
 import argparse
-import importlib
 import logging
+import os
+import signal
 import sys
+import threading
 from collections.abc import Sequence
 from typing import Any
 
@@ -114,6 +116,41 @@ def cmd_show(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _bind_stop_as_interrupt() -> dict[int, Any]:
+    """把停止信号转成 KeyboardInterrupt，让 ``finally`` 里的硬件复位能够执行。
+
+    Windows 上网页停止发的是 Ctrl+Break（SIGBREAK），不能对子进程组发 Ctrl+C。
+    子线程里登记信号会抛 ValueError，这里直接跳过。
+
+    :return: 登记前的处理函数，供结束后恢复，避免污染同进程里的测试。
+    """
+    previous: dict[int, Any] = {}
+    if threading.current_thread() is not threading.main_thread():
+        return previous
+
+    def _raise_interrupt(_signum: int, _frame: object) -> None:
+        raise KeyboardInterrupt
+
+    sigs = [signal.SIGINT, signal.SIGTERM]
+    if os.name == "nt":
+        sigs.append(signal.SIGBREAK)
+    for sig in sigs:
+        try:
+            previous[sig] = signal.signal(sig, _raise_interrupt)
+        except (ValueError, OSError):
+            continue
+    return previous
+
+
+def _restore_stop_signals(previous: dict[int, Any]) -> None:
+    """恢复 :func:`_bind_stop_as_interrupt` 替换掉的处理函数。"""
+    for sig, handler in previous.items():
+        try:
+            signal.signal(sig, handler)
+        except (ValueError, OSError):
+            continue
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     log = logging.getLogger("ppx_testkit.cli")
     try:
@@ -129,30 +166,35 @@ def cmd_run(args: argparse.Namespace) -> int:
     ctx.write_text("config.yaml", settings.to_yaml())
 
     try:
-        module = importlib.import_module(f"ppx_testkit.apps.{settings.app}")
+        from ppx_testkit.core.factory import resolve_runner
+
+        runner = resolve_runner(settings.app)
     except ImportError as exc:
         log.error("无法加载应用模块 ppx_testkit.apps.%s: %s", settings.app, exc, exc_info=True)
         return EXIT_CONFIG
-    runner = getattr(module, "run", None)
     if not callable(runner):
-        log.error("应用模块 %s 未实现 run(settings, ctx)", module.__name__)
+        log.error("应用模块 ppx_testkit.apps.%s 未实现 run(settings, ctx)", settings.app)
         return EXIT_CONFIG
 
+    armed = _bind_stop_as_interrupt()
     try:
-        code = runner(settings, ctx)
-        return int(code or EXIT_OK)
-    except ConfigError as exc:
-        log.error("配置错误: %s", exc)
-        return EXIT_CONFIG
-    except ToolError as exc:
-        log.error("运行失败: %s", exc, exc_info=True)
-        return EXIT_HARDWARE
-    except KeyboardInterrupt:
-        log.warning("用户中断")
-        return EXIT_INTERRUPTED
-    except Exception:  # noqa: BLE001 - CLI 兜底，保证异常写入 full.log
-        log.critical("应用发生未预期异常", exc_info=True)
-        return EXIT_FAIL
+        try:
+            code = runner(settings, ctx)
+            return int(code or EXIT_OK)
+        except ConfigError as exc:
+            log.error("配置错误: %s", exc)
+            return EXIT_CONFIG
+        except ToolError as exc:
+            log.error("运行失败: %s", exc, exc_info=True)
+            return EXIT_HARDWARE
+        except KeyboardInterrupt:
+            log.warning("用户中断")
+            return EXIT_INTERRUPTED
+        except Exception:  # noqa: BLE001 - CLI 兜底，保证异常写入 full.log
+            log.critical("应用发生未预期异常", exc_info=True)
+            return EXIT_FAIL
+    finally:
+        _restore_stop_signals(armed)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

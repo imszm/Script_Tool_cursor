@@ -330,13 +330,20 @@ class PpxScanStressCycle:
         self._sleep(self.cfg.startup_delay_s)
 
     def run_cycle(self, index: int) -> CycleResult:
-        """执行一轮扫码录入。窗口消失或扫码弹窗没出现时熔断。
+        """执行一轮扫码录入。
+
+        窗口或弹窗缺失时记为本轮失败并返回。``run`` 里执行器打开了遇失败即停，
+        所以这一轮会计入失败次数，总结和报告对得上。其它异常仍向上抛出。
 
         :param index: 轮次，从 1 开始。
-        :return: 成功时的轮次结果。失败抛出异常，由执行器终止。
+        :return: 本轮通过或失败。失败时 detail 为原因。
         """
         try:
             self._one_cycle()
+        except TestAbort as exc:
+            self.rows.append({"cycle": index, "verdict": "FAIL", "detail": exc.reason})
+            self._screenshot(index)
+            return CycleResult(index, False, exc.reason)
         except Exception as exc:  # noqa: BLE001 - 记下现场后原样抛出，由执行器终止
             if not is_failsafe(exc):
                 self.rows.append({"cycle": index, "verdict": "FAIL", "detail": str(exc)})
@@ -366,11 +373,13 @@ class PpxScanStressCycle:
         self._sleep(cfg.popup_wait_s)
         dialog = self.windows.rect(cfg.dialog_title)
         if cfg.require_dialog and dialog is None:
-            raise TestAbort(
-                f"等待 {cfg.popup_wait_s:g} 秒后未出现标题包含「{cfg.dialog_title}」的扫码窗口。"
+            log.warning(
                 "若弹窗标题不同，请改 stress.dialog_title；"
                 "若弹窗没有独立窗口标题，把 stress.require_dialog 设为 false。"
             )
+            raise TestAbort(self._with_visible_windows(
+                f"等待 {cfg.popup_wait_s:g} 秒后未出现标题包含「{cfg.dialog_title}」的扫码窗口。"
+            ))
         if cfg.first_field_click is not None:
             origin = self._anchor_origin(dialog)
             point = self._resolve("first_field", cfg.first_field_click, origin)
@@ -400,7 +409,8 @@ class PpxScanStressCycle:
         :param literal: True 时逐键输入并回车。条码为 True，车架号为 False。
         """
         cleaned = text.strip()
-        log.info("%s: %s", label, cleaned)
+        mode = "逐键" if literal else "粘贴"
+        log.info("%s（%s）: %s", label, mode, cleaned)
         self.screen.replace_text(
             cleaned,
             enter=True,
@@ -441,11 +451,11 @@ class PpxScanStressCycle:
         :return: 实际点击坐标。
         """
         if not self.cfg.follow_window:
-            log.info("%s 使用屏幕绝对坐标 %s", key, configured)
             return configured
         point, locked = track_point(configured, origin, self._origins.get(key))
         self._origins[key] = locked
-        log.info("%s 点击 %s（窗口左上角 %s）", key, point, origin)
+        if point != configured:
+            log.info("%s 随窗口移动到 %s（窗口左上角 %s）", key, point, origin)
         return point
 
     def _confirm(self, dialog: Rect | None) -> None:
@@ -459,7 +469,6 @@ class PpxScanStressCycle:
             dialog = fresh
         title_re = f".*{re.escape(cfg.dialog_title)}.*"
         if self.buttons.click_button(title_re, cfg.confirm_button, cfg.confirm_name_timeout_s):
-            log.info("已按按钮标题点击「%s」", cfg.confirm_button)
             return
         if cfg.confirm_by_name and not self._logged_confirm_fallback:
             log.warning(
@@ -482,16 +491,17 @@ class PpxScanStressCycle:
         dialog = self.windows.rect(cfg.torque_title)
         if dialog is None:
             if cfg.require_torque_dialog:
-                raise TestAbort(
-                    f"等待 {cfg.settle_wait_s:g} 秒后未出现标题包含「{cfg.torque_title}」的窗口。"
+                log.warning(
                     "若弹窗更晚出现，请加大 stress.settle_wait_s；"
                     "若这步不需要，把 stress.require_torque_dialog 设为 false。"
                 )
+                raise TestAbort(self._with_visible_windows(
+                    f"等待 {cfg.settle_wait_s:g} 秒后未出现标题包含「{cfg.torque_title}」的窗口。"
+                ))
             log.info("未出现「%s」窗口，跳过第二次确认", cfg.torque_title)
             return
         title_re = f".*{re.escape(cfg.torque_title)}.*"
         if self.buttons.click_button(title_re, cfg.confirm_button, cfg.confirm_name_timeout_s):
-            log.info("已按按钮标题点击「%s」窗口的「%s」", cfg.torque_title, cfg.confirm_button)
             return
         if cfg.confirm_by_name and not self._logged_torque_fallback:
             log.warning(
@@ -501,6 +511,41 @@ class PpxScanStressCycle:
             self._logged_torque_fallback = True
         point = self._resolve("torque", cfg.torque_confirm_click, (dialog[0], dialog[1]))
         self.screen.click(point, label=f"{cfg.torque_title}{cfg.confirm_button}")
+
+    def _with_visible_windows(self, reason: str) -> str:
+        """在熔断原因后附上当时能看到的顶层窗口标题。
+
+        :param reason: 已经写好的失败原因，以句号结尾。
+        :return: 带窗口列表的原因。枚举不到时原样返回。
+        """
+        observed = self._visible_window_text()
+        return f"{reason}{observed}" if observed else reason
+
+    def _visible_window_text(self) -> str:
+        """读取当前顶层窗口标题。窗口对象没有这个能力，或枚举失败时返回空串。
+
+        :return: ``当时可见窗口：A、B。`` 这样的一句。没有标题时为空串。
+        """
+        lister = getattr(self.windows, "titles", None)
+        if not callable(lister):
+            return ""
+        try:
+            raw = lister()
+        except Exception:  # noqa: BLE001 - 列窗口失败不能盖住原来的熔断原因
+            log.debug("枚举顶层窗口失败", exc_info=True)
+            return ""
+        names: list[str] = []
+        for item in raw:
+            title = str(item).strip()
+            if title and title not in names:
+                names.append(title)
+        if not names:
+            return ""
+        shown = names[:12]
+        text = "、".join(shown)
+        if len(names) > len(shown):
+            text += f" 等 {len(names)} 个"
+        return f"当时可见窗口：{text}。"
 
     def _screenshot(self, index: int) -> None:
         """失败时保存全屏截图。没有运行目录或截图失败时只记日志。
@@ -531,7 +576,7 @@ def run(settings: AppSettings, ctx: RunContext) -> int:
 
     screen = Screen(pause_s=cfg.screen.pause_s, failsafe=cfg.screen.failsafe)
     cycle = PpxScanStressCycle(cfg, screen, TitleWindowProbe(), open_button_clicker(cfg), ctx=ctx)
-    summary = StressRunner(cycle, cfg.cycles, station=settings.station).run()
+    summary = StressRunner(cycle, cfg.cycles, station=settings.station, stop_on_fail=True).run()
     write_reports(
         ctx,
         "report",

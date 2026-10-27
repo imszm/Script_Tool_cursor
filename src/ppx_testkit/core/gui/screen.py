@@ -432,11 +432,10 @@ class Screen:
         self.release_modifiers()
         if clear:
             self.clear_focused_input()
+        # 调用方已经写了「输入哪一项、内容是什么」。这里再记一遍会让 full.log 每条翻倍。
         if literal:
-            log.info("逐键输入: %s", text)
             type_literal(text, interval=interval, enter=enter)
             return
-        log.info("粘贴文本: %s", text)
         try:
             set_clipboard_text(text)
         except GuiError:
@@ -480,7 +479,7 @@ class Screen:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             self.pg.screenshot(str(path))
-            log.info("已保存截图: %s", path)
+            log.warning("已保存失败截图: %s", path)
             return path
         except Exception:  # noqa: BLE001 - 截图失败不能影响测试流程
             log.exception("保存截图失败: %s", path)

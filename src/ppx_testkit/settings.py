@@ -357,21 +357,60 @@ def parse_set_args(items: Iterable[str]) -> dict[str, Any]:
     return result
 
 
+def _station_root() -> Path:
+    return config_dir() / "stations"
+
+
+def _indexed_stations() -> list[tuple[str, Path]]:
+    """递归列出工位 YAML。名字是相对 ``stations`` 的路径，不含后缀。
+
+    ``_fragments`` 和其他以 ``_`` 开头的目录、文件不是工位。平铺文件的名字仍是文件名本身。
+
+    :return: 按名字排序的 ``(工位名, 绝对路径)``。
+    """
+    root = _station_root()
+    if not root.is_dir():
+        return []
+    found: list[tuple[str, Path]] = []
+    for path in root.rglob("*.yaml"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root)
+        if any(part.startswith("_") for part in rel.parts):
+            continue
+        found.append((rel.with_suffix("").as_posix(), path.resolve()))
+    found.sort(key=lambda item: item[0])
+    return found
+
+
 def station_file(station: str) -> Path:
+    """定位工位 YAML。支持平铺文件和 ``stations/<子目录>/<名字>.yaml``。
+
+    传入已存在的 ``.yaml`` / ``.yml`` 路径时直接使用。只给文件名且子目录里恰好有一份时也能找到。
+    """
     candidate = Path(station)
-    if candidate.suffix in {".yaml", ".yml"} and candidate.exists():
+    if candidate.suffix in {".yaml", ".yml"} and candidate.is_file():
         return candidate.resolve()
-    path = config_dir() / "stations" / f"{station}.yaml"
-    if not path.exists():
-        raise ConfigError(f"找不到工位配置 '{station}'（期望文件 {path}）。可用工位: {', '.join(list_stations())}")
-    return path
+    rel = station.replace("\\", "/").strip("/")
+    if not rel or any(part in {"", ".", ".."} for part in rel.split("/")):
+        raise ConfigError(f"非法工位名: {station!r}")
+    root = _station_root()
+    direct = root.joinpath(*rel.split("/")).with_suffix(".yaml")
+    if direct.is_file() and not any(part.startswith("_") for part in direct.relative_to(root).parts):
+        return direct.resolve()
+    if "/" not in rel:
+        matches = [(name, path) for name, path in _indexed_stations() if Path(name).name == rel]
+        if len(matches) == 1:
+            return matches[0][1]
+        if len(matches) > 1:
+            shown = ", ".join(name for name, _path in matches)
+            raise ConfigError(f"工位名 '{station}' 匹配到多个配置: {shown}")
+    raise ConfigError(f"找不到工位配置 '{station}'（期望文件 {direct}）。可用工位: {', '.join(list_stations())}")
 
 
 def list_stations() -> list[str]:
-    d = config_dir() / "stations"
-    if not d.is_dir():
-        return []
-    return sorted(p.stem for p in d.glob("*.yaml"))
+    """列出全部工位名。子目录中的工位使用 ``l5/xxx`` 这种相对路径。"""
+    return [name for name, _path in _indexed_stations()]
 
 
 def load_settings(

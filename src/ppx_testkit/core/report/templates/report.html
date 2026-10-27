@@ -2,38 +2,191 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>$title</title>
 <style>
-  body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
-  h1 { font-size: 20px; }
-  .summary { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-bottom: 16px; }
-  .kv b { margin-right: 6px; }
-  .filters button { margin-right: 6px; padding: 4px 10px; cursor: pointer; }
-  table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 12px; }
-  th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; vertical-align: top; }
-  th { background: #f2f2f2; position: sticky; top: 0; }
-  tr.pass td { background: #eefaf0; }
-  tr.fail td { background: #fdecec; }
+  :root {
+    --bg: #f3f5f7;
+    --card: #fff;
+    --line: #e4e8ee;
+    --text: #1c2430;
+    --muted: #5e6d7e;
+    --pass: #0d7a4b;
+    --pass-bg: #e8f6ee;
+    --fail: #b42318;
+    --fail-bg: #fdeeee;
+    --warn: #8a5a00;
+    --warn-bg: #fff6df;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .page { max-width: 1080px; margin: 0 auto; padding: 28px 20px 48px; }
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: 0.01em; }
+  .badge {
+    flex: none;
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .badge.pass { color: var(--pass); background: var(--pass-bg); }
+  .badge.fail { color: var(--fail); background: var(--fail-bg); }
+  .badge.warn { color: var(--warn); background: var(--warn-bg); }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    gap: 10px;
+  }
+  .stat {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px 10px;
+  }
+  .stat .label { color: var(--muted); font-size: 12px; }
+  .stat .value { margin-top: 2px; font-size: 26px; font-weight: 650; line-height: 1.15; }
+  .stat.good .value { color: var(--pass); }
+  .stat.bad .value { color: var(--fail); }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .meta span {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+    color: #3d4b5c;
+    font-size: 12px;
+  }
+  .meta b { font-weight: 650; margin-right: 6px; color: var(--muted); }
+  .notes { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .note {
+    background: #fff8f7;
+    border: 1px solid #f0d2ce;
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+  .note h2 { margin: 0 0 6px; font-size: 13px; color: var(--fail); }
+  .note p { margin: 0; }
+  .note details { margin-top: 8px; }
+  .note summary, td.detail summary { cursor: pointer; color: #7a4540; font-size: 13px; }
+  .windows {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+  }
+  .windows li {
+    background: var(--card);
+    border: 1px solid #ead7d4;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 22px 0 10px;
+  }
+  .toolbar .count { color: var(--muted); font-size: 13px; }
+  .filters { display: flex; gap: 6px; }
+  .filters button {
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+  }
+  .filters button.active { background: #1c2430; color: #fff; border-color: #1c2430; }
+  .table-wrap {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: auto;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td {
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid #eef1f4;
+  }
+  th {
+    position: sticky;
+    top: 0;
+    background: #f8fafc;
+    color: var(--muted);
+    font-weight: 650;
+    font-size: 12px;
+  }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { width: 72px; white-space: nowrap; }
+  td.verdict, th.verdict { width: 88px; }
+  td.detail { line-height: 1.55; word-break: break-word; }
+  tr.fail td { background: #fffafa; }
+  .pill {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .pill.pass { color: var(--pass); background: var(--pass-bg); }
+  .pill.fail { color: var(--fail); background: var(--fail-bg); }
+  .empty { color: #b0bac4; }
 </style>
 </head>
 <body>
-<h1>$title</h1>
-<div class="summary">$summary</div>
-<div class="filters">
-  <button onclick="filterRows('')">全部</button>
-  <button onclick="filterRows('PASS')">仅 PASS</button>
-  <button onclick="filterRows('FAIL')">仅 FAIL</button>
+<div class="page">
+  <header class="top">
+    <h1>$title</h1>
+    $badge
+  </header>
+  $summary
+  <div class="toolbar">
+    <span class="count">$count</span>
+    <div class="filters">
+      <button type="button" class="active" onclick="filterRows('', this)">全部</button>
+      <button type="button" onclick="filterRows('PASS', this)">仅通过</button>
+      <button type="button" onclick="filterRows('FAIL', this)">仅失败</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>$head</tr></thead>
+      <tbody>
+      $body
+      </tbody>
+    </table>
+  </div>
 </div>
-<table>
-  <thead><tr>$head</tr></thead>
-  <tbody>
-$body
-  </tbody>
-</table>
 <script>
-function filterRows(v) {
-  document.querySelectorAll('tbody tr').forEach(function (tr) {
-    tr.style.display = (!v || tr.dataset.verdict === v) ? '' : 'none';
+function filterRows(v, btn) {
+  document.querySelectorAll(".filters button").forEach(function (item) {
+    item.classList.toggle("active", item === btn);
+  });
+  document.querySelectorAll("tbody tr").forEach(function (tr) {
+    tr.style.display = (!v || tr.dataset.verdict === v) ? "" : "none";
   });
 }
 </script>

@@ -13,7 +13,8 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterable, Iterator, Sequence
+import importlib
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -21,6 +22,7 @@ from ppx_testkit.core.monitor.keyword_rules import KeywordConfig, KeywordEvaluat
 from ppx_testkit.core.monitor.line_reader import DeviceLogMonitor
 from ppx_testkit.core.protocol.dll_loader import PpxDll
 from ppx_testkit.core.protocol.region_client import RegionClient, RegionCodecV1, RegionCodecV2
+from ppx_testkit.core.registry import lookup_registered
 from ppx_testkit.core.relay.base import RelayConfig, RelayDriver, build_relay
 from ppx_testkit.core.relay.drivers import ServoDriver
 from ppx_testkit.core.serial.port_finder import PortFinder
@@ -256,3 +258,40 @@ def ble_client_from_settings(
         yield BleClient(codec, transport, dev_id=dev_id, rx_timeout_s=rx_timeout_s)
     finally:
         transport.close()
+
+
+def resolve_runner(app: str) -> Callable[..., Any] | None:
+    """解析一次运行的入口。已注册的工位或工具优先，否则回退到旧的应用模块。
+
+    回退路径仍是 ``ppx_testkit.apps.<app>.run``。这里不新增按机型或工位名分支的字典。
+    现有 YAML 工位都还没注册，因此继续走这条导入。
+
+    :param app: 配置字段 ``app``，例如 ``charge.charge_cycle``。
+    :return: 可调用的 ``run``；回退模块存在但没有 ``run`` 时返回 None。
+    :raises ImportError: 未注册且 ``ppx_testkit.apps.<app>`` 无法导入。
+    """
+    meta = lookup_registered(app)
+    if meta is not None:
+        return _callable_from_registered(meta.target)
+    module = importlib.import_module(f"ppx_testkit.apps.{app}")
+    runner = getattr(module, "run", None)
+    if callable(runner):
+        return runner
+    return None
+
+
+def _callable_from_registered(target: Any) -> Callable[..., Any] | None:
+    """从注册对象取出可调用入口。
+
+    普通函数直接返回。类或实例则取 ``run``，以保持 ``run(settings, ctx)`` 的旧调用方式。
+
+    :param target: ``StationMeta.target``。
+    :return: 可调用对象；无法识别时返回 None。
+    """
+    if isinstance(target, type):
+        runner = getattr(target, "run", None)
+        return runner if callable(runner) else None
+    if callable(target):
+        return target
+    runner = getattr(target, "run", None)
+    return runner if callable(runner) else None

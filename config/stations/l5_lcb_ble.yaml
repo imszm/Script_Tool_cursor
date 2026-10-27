@@ -7,7 +7,7 @@
 #   ppx-test run l5_lcb_ble --set lcb_ble.combo=true          # 自动生成排列组合用例
 #   ppx-test run l5_lcb_ble --set lcb_ble.loop_count=100 --set lcb_ble.loop_delay_s=0.5
 #
-# 用例列说明见 resources/testcases/testcases-模板.csv 与 ppx_testkit/apps/whitebox/lcb_ble.py。
+# 用例列说明见 resources/testcases/testcases_template.csv 与 ppx_testkit/apps/whitebox/lcb_ble.py。
 station: l5_lcb_ble
 app: whitebox.lcb_ble
 description: L5 灯板 BLE 协议 LED 用例测试（Excel/CSV 用例 + HTML 报告）

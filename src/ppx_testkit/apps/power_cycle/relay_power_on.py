@@ -36,6 +36,7 @@ from ppx_testkit.apps.power_cycle._common import (
     require_runner_options,
     try_reconnect,
 )
+from ppx_testkit.core.context import HardwareContext
 from ppx_testkit.core.factory import (
     build_monitor,
     close_ports,
@@ -128,6 +129,7 @@ class RelayPowerCycle:
         self._rng = rng or random.Random()
         self._clock = clock
         self._closed = False
+        self._power_settled = False
         self.disconnects = 0
         self.zero_data_failures = 0
 
@@ -163,6 +165,7 @@ class RelayPowerCycle:
                     log.error("退出时断开继电器失败: %s", exc)
         finally:
             close_ports(self.relay.transport, self.monitor.transport if self.monitor else None)
+            self._power_settled = True
             summary.extra.update(self.stats())
 
     # ------------------------------------------------------------ 统计
@@ -305,8 +308,25 @@ def run(
         specs.append(("device", True))
     log.info("运行目录: %s", ctx.run_dir or "<仅控制台>")
 
-    ports = open_ports(settings, specs, factory=factory, finder=finder)
-    try:
+    relay: RelayDriver | None = None
+    cycle: RelayPowerCycle | None = None
+
+    def _cut_relay() -> None:
+        """teardown 未做完断电决策时强制断开继电器。现场保留由 teardown 先记入 _power_settled。"""
+        if cycle is not None and cycle._power_settled:
+            return
+        if relay is None:
+            return
+        try:
+            relay.all_off()
+        except HardwareError as exc:
+            log.error("紧急断电失败: %s", exc)
+
+    with HardwareContext() as hw:
+        ports = open_ports(settings, specs, factory=factory, finder=finder)
+        for name, transport in ports.items():
+            hw.register_emergency_stop(transport.close, name=f"释放串口-{name}")
+        hw.register_emergency_stop(_cut_relay, name="relay-off")
         relay = relay_from_settings(settings, ports["relay"])
         monitor = (
             build_monitor(settings, ports["device"], no_data_warning_s=cfg.no_data_warning_s)
@@ -323,6 +343,4 @@ def run(
             max_consecutive_failures=cfg.max_consecutive_failures,
             interval_s=cfg.interval_s,
         ).run()
-    finally:
-        close_ports(*ports.values())
     return finish(summary, title="继电器开关机压测", notify=cfg.notify)

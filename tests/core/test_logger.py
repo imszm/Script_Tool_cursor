@@ -87,6 +87,19 @@ def test_thread_exceptions_are_logged(tmp_path: Path) -> None:
     assert "worker-x" in text and "线程炸了" in text
 
 
+def test_gui_run_skips_empty_raw_log_and_library_debug(tmp_path: Path) -> None:
+    pil_level = logging.getLogger("PIL").level
+    ctx = setup_logging("st", _settings(tmp_path), console=False)
+    get_logger("PIL.Image").debug("Importing PngImagePlugin")
+    get_logger("ppx_testkit.test").info("工位日志")
+    shutdown_logging()
+    text = ctx.full_log.read_text(encoding="utf-8")  # type: ignore[union-attr]
+    assert "工位日志" in text
+    assert "PngImagePlugin" not in text
+    assert ctx.raw_log is not None and not ctx.raw_log.exists()
+    assert logging.getLogger("PIL").level == pil_level
+
+
 def test_file_level_respected(tmp_path: Path) -> None:
     ctx = setup_logging("st", _settings(tmp_path, file_level="INFO"), console=False)
     get_logger("x").debug("不应出现")

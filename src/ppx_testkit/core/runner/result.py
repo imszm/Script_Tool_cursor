@@ -44,6 +44,7 @@ class RunSummary:
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["pass_rate"] = round(self.pass_rate, 2)
+        d["duration_s"] = round(self.duration_s, 3)
         d["ok"] = self.ok
         return d
 

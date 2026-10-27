@@ -12,6 +12,7 @@ from typing import Any
 
 import yaml
 
+from ppx_testkit.core.registry import lookup_registered
 from ppx_testkit.exceptions import ConfigError
 from ppx_testkit.settings import _read_yaml, list_stations, load_settings
 from ppx_testkit.utils.paths import config_dir
@@ -32,6 +33,23 @@ CAUTIONS: dict[str, str] = {
 _CYCLE_SECTIONS = ("test", "stress", "lamp")
 _PORT_RE = re.compile(r"^[A-Za-z0-9_.:/\\-]{1,64}$")
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_STATION_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}(?:/[A-Za-z0-9_-]{1,64})*$")
+
+
+def _caution_for(station: str, app: str | None = None) -> str | None:
+    """网页提示。注册信息里写了 caution 时优先，否则回退到 :data:`CAUTIONS`。
+
+    :param station: 工位名。
+    :param app: 配置里的应用路径，可空。
+    :return: 提示文案；没有则 None。
+    """
+    for key in (station, app or ""):
+        if not key:
+            continue
+        meta = lookup_registered(key)
+        if meta is not None and meta.caution:
+            return meta.caution
+    return CAUTIONS.get(station)
 
 
 def station_catalog() -> list[dict[str, Any]]:
@@ -44,7 +62,7 @@ def station_catalog() -> list[dict[str, Any]]:
         try:
             settings = load_settings(name, use_local=True, environ={})
         except ConfigError as exc:
-            rows.append({"name": name, "description": "", "error": str(exc), "serial": [], "caution": CAUTIONS.get(name)})
+            rows.append({"name": name, "description": "", "error": str(exc), "serial": [], "caution": _caution_for(name)})
             continue
         data = dict(settings.data)
         cycle_key, cycle_default = cycle_field(data)
@@ -55,7 +73,7 @@ def station_catalog() -> list[dict[str, Any]]:
             "serial": serial_fields(data),
             "cycle_key": cycle_key,
             "cycle_default": cycle_default,
-            "caution": CAUTIONS.get(settings.station),
+            "caution": _caution_for(settings.station, settings.app),
             "error": None,
         })
     return rows
@@ -105,7 +123,7 @@ def build_run_args(station: str, ports: dict[str, str], cycles: int | None, cycl
     :param cycle_key: 如 ``test.cycles``。cycles 有值时必须给出。
     :return: 传给子进程的 argv。
     """
-    if not _NAME_RE.fullmatch(station):
+    if not _STATION_RE.fullmatch(station):
         raise ConfigError(f"非法工位名: {station!r}")
     args = [sys.executable, "-m", "ppx_testkit", "run", station]
     for name in sorted(ports):
@@ -136,7 +154,7 @@ def save_local_ports(station: str, ports: dict[str, str], path: Path | None = No
     :param path: 默认 config/local.yaml。
     :return: 写入的文件路径。
     """
-    if not _NAME_RE.fullmatch(station):
+    if not _STATION_RE.fullmatch(station):
         raise ConfigError(f"非法工位名: {station!r}")
     target = path or (config_dir() / "local.yaml")
     current: dict[str, Any] = {}

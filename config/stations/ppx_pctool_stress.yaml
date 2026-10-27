@@ -24,7 +24,7 @@ app: pctool.ppx_scan_stress
 description: PPX PCTOOL 车架号与扫码弹窗压力（先改 vin_click、confirm_click）
 
 stress:
-  window_title: "P3_CN&US 组装升级工具 V2.4.00"
+  window_title: "PPX PCTOOL V2.5.00"
   dialog_title: "扫码"
   confirm_button: "确认"
   cycles: 100
@@ -48,5 +48,5 @@ stress:
     - { label: 左力矩, text: "WL680004409882+16" }
     - { label: 右力矩, text: "WR680004408644+01" }
     - { label: 左电机, text: "PX01-8120Y063203608" }
-    - { label: 右电机, text: "PX01-8120Y063203616" }
+    - { label: 右电机, text: "PX01-8120Y064000335" }
     - { label: 电池, text: "AV06002LH201F9030111" }

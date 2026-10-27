@@ -11,7 +11,8 @@ from ppx_testkit.apps.pctool.ppx_scan_stress import (
     PpxScanStressCycle,
     track_point,
 )
-from ppx_testkit.exceptions import ConfigError, TestAbort, WindowNotFoundError
+from ppx_testkit.core.runner import StressRunner
+from ppx_testkit.exceptions import ConfigError, WindowNotFoundError
 from ppx_testkit.settings import from_dict, load_settings
 
 VIN = "P30101RZKUS6900007"
@@ -47,6 +48,7 @@ class FakeWindows:
         self.dialog: tuple[int, int, int, int] | None = (300, 200, 700, 560)
         self.torque: tuple[int, int, int, int] | None = (600, 500, 980, 760)
         self.activated: list[str] = []
+        self.visible_titles: list[str] = []
 
     def rect(self, title: str, *, exact: bool = False) -> tuple[int, int, int, int] | None:
         if title == "扫码":
@@ -58,6 +60,9 @@ class FakeWindows:
     def activate(self, title: str) -> bool:
         self.activated.append(title)
         return True
+
+    def titles(self) -> list[str]:
+        return list(self.visible_titles)
 
 
 class ShiftOnActivate(FakeWindows):
@@ -162,7 +167,7 @@ def test_station_yaml_keeps_vin_and_barcode_order() -> None:
         ("左力矩", "WL680004409882+16"),
         ("右力矩", "WR680004408644+01"),
         ("左电机", "PX01-8120Y063203608"),
-        ("右电机", "PX01-8120Y063203616"),
+        ("右电机", "PX01-8120Y064000335"),
         ("电池", "AV06002LH201F9030111"),
     ]
     assert cfg.popup_wait_s == 2
@@ -238,11 +243,15 @@ def test_absolute_mode_ignores_window_move() -> None:
 def test_missing_dialog_aborts_before_barcodes() -> None:
     windows = FakeWindows()
     windows.dialog = None
+    windows.visible_titles = ["PPX PCTOOL V2.5.00", "Cursor"]
     cycle, screen, _, _, _ = _cycle(windows=windows)
-    with pytest.raises(TestAbort, match="扫码"):
-        cycle.run_cycle(1)
+    result = cycle.run_cycle(1)
+    assert not result.passed
+    assert "扫码" in result.detail
+    assert "PPX PCTOOL V2.5.00" in result.detail
     assert screen.texts == [VIN]
     assert len(screen.clicks) == 1
+    assert cycle.rows[-1]["verdict"] == "FAIL"
 
 
 def test_vin_click_uses_position_after_activate() -> None:
@@ -260,18 +269,29 @@ def test_missing_torque_dialog_aborts_after_scan_confirm() -> None:
     windows = FakeWindows()
     windows.torque = None
     cycle, screen, _, _, _ = _cycle(named_ok=True, windows=windows)
-    with pytest.raises(TestAbort, match="力矩校验"):
-        cycle.run_cycle(1)
+    result = cycle.run_cycle(1)
+    assert not result.passed and "力矩校验" in result.detail
     assert screen.texts == [VIN, *[text for _, text in BARCODES]]
     assert screen.clicks == [((500, 200), "VIN输入框")]
+
+
+def test_missing_dialog_counts_as_failed_cycle_and_stops() -> None:
+    windows = FakeWindows()
+    windows.dialog = None
+    cycle, _, _, _, _ = _cycle(windows=windows)
+    summary = StressRunner(cycle, 2, station="ppx_pctool_stress", stop_on_fail=True).run()
+    assert summary.aborted
+    assert (summary.executed, summary.passed, summary.failed) == (1, 0, 1)
+    assert summary.pass_rate == 0.0
+    assert "扫码" in (summary.abort_reason or "")
 
 
 def test_missing_main_window_aborts_in_cycle_and_setup() -> None:
     windows = FakeWindows()
     windows.main = None
     cycle, screen, _, _, _ = _cycle(windows=windows)
-    with pytest.raises(TestAbort, match="PPX PCTOOL"):
-        cycle.run_cycle(1)
+    result = cycle.run_cycle(1)
+    assert not result.passed and "PPX PCTOOL" in result.detail
     assert screen.clicks == []
     with pytest.raises(WindowNotFoundError):
         cycle.setup()

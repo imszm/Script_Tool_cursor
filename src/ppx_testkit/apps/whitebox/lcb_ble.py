@@ -60,7 +60,10 @@ COMBO_FIELDS: dict[str, tuple[int, ...]] = {
 
 # ============================================================ 配置
 def _default_ble_dll() -> Path:
-    return resources_dir() / "dll" / "l5" / "ppx_ble.dll"
+    """L5 BLE DLL。路径定义在 profiles.l5，这里只取默认文件。"""
+    from ppx_testkit.profiles.l5 import ble_dll
+
+    return ble_dll()
 
 
 def _default_cases() -> Path:

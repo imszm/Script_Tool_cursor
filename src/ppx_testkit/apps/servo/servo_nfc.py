@@ -26,6 +26,7 @@ from ppx_testkit.apps.power_cycle._common import (
     require_runner_options,
     try_reconnect,
 )
+from ppx_testkit.core.context import HardwareContext
 from ppx_testkit.core.factory import (
     build_monitor,
     close_ports,
@@ -126,6 +127,7 @@ class ServoNfcCycle:
         self.current: Status = cfg.initial_status
         self._started = False
         self._closed = False
+        self._power_settled = False
 
     # ------------------------------------------------------------ StressCycle
     def setup(self) -> None:
@@ -185,6 +187,7 @@ class ServoNfcCycle:
             self.reader.stop()
             close_ports(self.reader.monitor.transport)
             self.servo.close()
+            self._power_settled = True
             summary.extra.update({
                 "最终设备状态": STATUS_LABEL[self.current],
                 "异常关键字次数": self.reader.monitor.evaluator.exception_count,
@@ -238,8 +241,32 @@ def run(
     keyword_config(settings)
     log.info("运行目录: %s", ctx.run_dir or "<仅控制台>")
 
-    ports = open_ports(settings, [("device", True), ("servo", False)], factory=factory, finder=finder)
-    try:
+    servo: ServoDriver | None = None
+    reader: BackgroundLogReader | None = None
+    cycle: ServoNfcCycle | None = None
+
+    def _stop_reader() -> None:
+        """停止设备日志线程。重复调用无效果。"""
+        if reader is not None:
+            reader.stop()
+
+    def _lift_servo() -> None:
+        """teardown 未抬起舵机时补一次抬起，避免 NFC 卡停在下压位。"""
+        if cycle is not None and cycle._power_settled:
+            return
+        if servo is None:
+            return
+        try:
+            servo.move(cfg.high_position, cfg.move_time_ms)
+        except HardwareError as exc:
+            log.error("紧急抬起舵机失败: %s", exc)
+
+    with HardwareContext() as hw:
+        ports = open_ports(settings, [("device", True), ("servo", False)], factory=factory, finder=finder)
+        for name, transport in ports.items():
+            hw.register_emergency_stop(transport.close, name=f"释放串口-{name}")
+        hw.register_emergency_stop(_stop_reader, name="stop-reader")
+        hw.register_emergency_stop(_lift_servo, name="servo-up")
         device = ports["device"]
         monitor = build_monitor(settings, device)
         reader = BackgroundLogReader(
@@ -258,6 +285,4 @@ def run(
             fail_keeps_power=True,
             max_consecutive_failures=cfg.max_consecutive_failures,
         ).run()
-    finally:
-        close_ports(*ports.values())
     return finish(summary, title="舵机 NFC 开关机压测", notify=cfg.notify)

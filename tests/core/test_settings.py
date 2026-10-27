@@ -207,6 +207,16 @@ class TestLoadSettings:
         assert "port: COM1" in s.to_yaml()
 
 
+def test_nested_station_directory(project_tmp: Path) -> None:
+    stations = project_tmp / "config" / "stations"
+    _write(stations / "_fragments" / "common.yaml", "k: 1\n")
+    _write(stations / "flat.yaml", "app: a.b\nstation: flat\n")
+    _write(stations / "l5" / "nested.yaml", "app: a.b\nstation: l5/nested\n")
+    assert list_stations() == ["flat", "l5/nested"]
+    assert load_settings("l5/nested", environ={}).station == "l5/nested"
+    assert load_settings("nested", environ={}).raw("app") == "a.b"
+
+
 def test_real_stations_pass_schema() -> None:
     """仓库内每个工位在无硬件、无 local.yaml 时都能通过启动校验。"""
     for name in list_stations():

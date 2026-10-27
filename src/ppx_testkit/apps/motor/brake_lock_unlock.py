@@ -19,7 +19,6 @@ teardown 都会把两台电机速度归零、按配置给被测电机上锁，�
 
 from __future__ import annotations
 
-import contextlib
 import random
 import threading
 import time
@@ -28,6 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from ppx_testkit.core.context import HardwareContext
 from ppx_testkit.core.factory import build_region_client, open_serial
 from ppx_testkit.core.protocol.dll_loader import PpxDll
 from ppx_testkit.core.protocol.ppx_types import BrakeStateV2, DevId, ModeV2
@@ -216,6 +216,7 @@ class BrakeLockUnlockCycle:
         log.info(">>> 收尾：双机速度归零%s", "，被测电机上锁" if self.cfg.lock_on_teardown else "")
         self._stop_all(lock=self.cfg.lock_on_teardown)
         summary.extra.update(self.stats())
+        self._hw_released = True
 
     # ------------------------------------------------------------ 统计
     @staticmethod
@@ -493,11 +494,11 @@ def run(
     tested_codec = make_codec(proto.dll_path)
     load_codec = make_codec(proto.dll_path)
 
-    with contextlib.ExitStack() as stack:
+    with HardwareContext() as hw:
         tested_tr = open_serial(settings, "tested", factory=serial_factory)
-        stack.callback(tested_tr.close)
+        hw.enter_resource(tested_tr)
         load_tr = open_serial(settings, "load", exclude=[tested_tr.port], factory=serial_factory)
-        stack.callback(load_tr.close)
+        hw.enter_resource(load_tr)
 
         def _link(codec: Any, transport: Any, label: str, name: str) -> MotorLink:
             client = build_region_client(
@@ -514,6 +515,14 @@ def run(
         )
         log.info("电磁刹车解锁/上锁成功率测试：被测 %s | 负载 %s | 目标 %d 轮 | 超温保护 %s",
                  tested_tr.port, load_tr.port, cfg.cycles, "开启" if cfg.overheat.enabled else "关闭")
+
+        def _safe_motors() -> None:
+            """串口关闭前把双机速度归零。teardown 已做完时不再重复发令。"""
+            if getattr(cycle, "_hw_released", False):
+                return
+            cycle._stop_all(lock=cfg.lock_on_teardown)
+
+        hw.register_emergency_stop(_safe_motors, name="motors-safe")
         runner = StressRunner(
             cycle, cfg.cycles, station=settings.station, stop_on_fail=cfg.stop_on_fail,
             max_consecutive_failures=cfg.max_consecutive_failures or None,

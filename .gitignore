@@ -28,6 +28,9 @@ env/
 build/
 dist/
 *.spec
+*.a
+*.o
+*.lib
 
 # 编辑器。仓库保留 .vscode/settings.json，作为共用的解释器路径。
 .cursor/

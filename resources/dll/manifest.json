@@ -1,0 +1,41 @@
+{
+  "l5": [
+    {
+      "name": "ppx_ble.dll",
+      "size": 16896,
+      "sha256": "dc557dbcd4c4b7bc73f4992ee905cdbe6d487c09c2882363e922be4d3ee18c35"
+    },
+    {
+      "name": "ppx_factory.dll",
+      "size": 17920,
+      "sha256": "83acd64ec263a971a63bbee895b80dc0c9a00ea2fd6acd234b059958d2e87629"
+    },
+    {
+      "name": "ppx_iap.dll",
+      "size": 18432,
+      "sha256": "2786649ba8e4546b067bf1a6860a8aa36ac5e26c20a7fcb6e8ae6214c1291862"
+    },
+    {
+      "name": "ppx_log.dll",
+      "size": 16896,
+      "sha256": "6c7dcfc979f1589ad0558a9979a36e991855aa0d5281f24e130a6d364b278c85"
+    },
+    {
+      "name": "ppx_region.dll",
+      "size": 16896,
+      "sha256": "8a8dd0de22a2ee4896c0d0f49c32b57210c14cd1f12a55474ca9ac6afa911d6e"
+    }
+  ],
+  "r3": [
+    {
+      "name": "ppx_ble.dll",
+      "size": 60157,
+      "sha256": "50cb2042609b80dc04daad0640b88ed976347a3af25bd73793e27663d2619f40"
+    },
+    {
+      "name": "ppx_region.dll",
+      "size": 60645,
+      "sha256": "747c823d9f41b37307b10a354c34ad3f31828d93a7501eee702ca0dd898e1e30"
+    }
+  ]
+}

@@ -125,6 +125,8 @@ def test_summary_render() -> None:
                    abort_reason="x", keep_power=True, extra={"异常次数": 3})
     text = s.render()
     assert "通过率 50.00%" in text and "熔断原因" in text and "异常次数: 3" in text
+    s.duration_s = 51.563000000081956
+    assert s.to_dict()["duration_s"] == 51.563
 
 
 # ================================================================ report
@@ -139,6 +141,41 @@ def test_write_csv_and_html(tmp_path: Path) -> None:
     content = h.read_text(encoding="utf-8")
     assert 'class="pass"' in content and 'class="fail"' in content and "&lt;B&gt;" in content and "报告" in content
     assert "$" not in content.split("<script")[0]
+
+
+def test_html_report_separates_stats_reason_and_windows(tmp_path: Path) -> None:
+    reason = (
+        "等待 20 秒后未出现标题包含「力矩校验」的窗口。"
+        "当时可见窗口：PPX PCTOOL V2.5.00、Cursor 等 15 个。"
+    )
+    summary = {
+        "station": "ppx_pctool_stress",
+        "target_cycles": 2,
+        "executed": 2,
+        "passed": 1,
+        "failed": 1,
+        "aborted": True,
+        "abort_reason": reason,
+        "keep_power": False,
+        "interrupted": False,
+        "error": None,
+        "pass_rate": 50.0,
+        "ok": False,
+        "extra": {"完成轮次": 1},
+    }
+    rows = [
+        {"cycle": 1, "verdict": "PASS", "detail": ""},
+        {"cycle": 2, "verdict": "FAIL", "detail": reason},
+    ]
+    path = write_html(tmp_path / "report.html", title="产测扫码压力报告", summary=summary, rows=rows)
+    assert path is not None
+    text = path.read_text(encoding="utf-8")
+    assert "目标轮次" in text and "50.00%" in text and "熔断" in text
+    assert "target_cycles" not in text and "keep_power" not in text
+    assert "完成轮次" in text
+    assert text.count("<details>") == 2
+    assert "当时可见窗口（15）" in text
+    assert "轮次" in text and "仅通过" in text
 
 
 def test_writers_swallow_os_errors(tmp_path: Path) -> None:
@@ -185,7 +222,7 @@ def test_value_converters() -> None:
 def test_bundled_testcases_load() -> None:
     from ppx_testkit.utils.paths import resources_dir
 
-    assert load_cases(resources_dir() / "testcases" / "testcases-模板.csv")
+    assert load_cases(resources_dir() / "testcases" / "testcases_template.csv")
 
 
 # ================================================================ CLI

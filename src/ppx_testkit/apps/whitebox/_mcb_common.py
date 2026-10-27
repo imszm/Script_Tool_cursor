@@ -17,7 +17,6 @@ from ppx_testkit.core.report.writers import write_detail_reports
 from ppx_testkit.exceptions import ConfigError
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
-from ppx_testkit.utils.paths import resources_dir
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +26,10 @@ SKIP = "SKIP"
 
 
 def _default_region_dll() -> Path:
-    return resources_dir() / "dll" / "l5" / "ppx_region.dll"
+    """L5 region DLL。路径定义在 profiles.l5，这里只取默认文件。"""
+    from ppx_testkit.profiles.l5 import region_dll
+
+    return region_dll()
 
 
 @dataclass(frozen=True)

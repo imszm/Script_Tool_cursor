@@ -69,6 +69,45 @@ class TitleWindowProbe:
         log.info("已激活窗口: %s", title)
         return True
 
+    def titles(self, *, limit: int = 15) -> list[str]:
+        """列出当前可见顶层窗口标题，供失败日志对照屏幕上实际开着什么。
+
+        :param limit: 最多返回多少条，避免把整桌窗口刷进一行日志。
+        :return: 去重后的非空标题。枚举失败抛出 GuiError。
+        """
+        if limit <= 0:
+            return []
+        elements = self._top_level()
+        names: list[str] = []
+        for element in elements:
+            title = str(getattr(element, "name", "") or "").strip()
+            if not title or title in names:
+                continue
+            names.append(title)
+            if len(names) >= limit:
+                break
+        return names
+
+    def _top_level(self) -> list[Any]:
+        """枚举可见顶层窗口。旧版 pywinauto 不认 visible_only 时退回全部顶层窗口。
+
+        :return: pywinauto 元素列表。枚举失败抛出 GuiError。
+        """
+        try:
+            from pywinauto import findwindows  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise GuiError("需要 Windows 环境并安装 pywinauto（pip install .[win]）") from exc
+        try:
+            return list(findwindows.find_elements(top_level_only=True, visible_only=True))
+        except TypeError:
+            pass
+        except Exception as exc:  # noqa: BLE001 - 枚举窗口失败统一转换
+            raise GuiError(f"枚举窗口失败: {exc}") from exc
+        try:
+            return list(findwindows.find_elements(top_level_only=True))
+        except Exception as exc:  # noqa: BLE001 - 枚举窗口失败统一转换
+            raise GuiError(f"枚举窗口失败: {exc}") from exc
+
     def _find(self, title: str, *, exact: bool = False) -> list[Any]:
         """枚举可见顶层窗口。
 

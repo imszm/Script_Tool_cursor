@@ -1,4 +1,8 @@
-"""PPX 协议 DLL 加载。"""
+"""PPX 协议 DLL 的通用加载。
+
+机型目录、文件名和默认节点在 ``ppx_testkit.profiles``。本模块只按调用方给出的路径加载，
+不区分 L5 / R3。
+"""
 
 from __future__ import annotations
 

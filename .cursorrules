@@ -1,17 +1,30 @@
 # 项目架构规范
-项目目标：将分散的独立自动化测试脚本解耦为模块化工程，测试判定、时序和关键字规则保持不变。
+项目目标：将分散的独立自动化测试脚本解耦为模块化工程。测试判定、时序和关键字规则保持不变。
 
-目录以现有包为准，不要再拆一版根目录 core/、cases/、main.py：
-- src/ppx_testkit/core/：串口、继电器、协议、监控、压测执行器、报告、GUI
-- src/ppx_testkit/apps/：工位编排。只读配置、组装 core 对象、编排步骤，不直接操作 pyserial / ctypes
-- config/stations/：工位 yaml；公共片段放 config/stations/_fragments/，用 include 引用
-- config/local.yaml：本机串口号，不入库
-- resources/：DLL、头文件、图片、用例模板。L5 与 R3 的 ppx_region.dll 分目录存放，不合并加载器
-- 入口：ppx-test（ppx_testkit.cli:main），不是 main.py
+目录以包内分层为准，不要再拆根目录 `core/`、`cases/`、`main.py`：
+- `src/ppx_testkit/core/`：串口、继电器、协议加载、监控、执行引擎、报告、GUI。禁止 L5/R3/W3/P3 硬编码常量、寄存器地址和专属业务。
+- `src/ppx_testkit/profiles/`：机型 DLL 映射、节点 ID、寄存器表、按键/菜单枚举、通道状态机。
+- `src/ppx_testkit/stations/`：受控工位，按 `assembly/`、`charge/`、`fct/`、`lamp/`、`motor/`、`pctool/`、`power_cycle/`、`servo/`、`whitebox/` 划分。继承 `BaseStation`，Profile 由 YAML 注入。兼容期与 `apps/` 共存。
+- `src/ppx_testkit/tools/`：计算器、定位、继电器探测、调试菜单等非压测工具。不接入 `stress_runner` 与报告。
+- `src/ppx_testkit/web/` 与 `cli.py`：参数、配置、子进程会话、状态展示。
+- `config/stations/`：工位 yaml；公共片段放 `config/stations/_fragments/`，用 include 引用。
+- `config/local.yaml`：本机串口号，不入库。
+- `resources/`：DLL、头文件、图片、用例模板。L5 与 R3 的 `ppx_region.dll` 分目录存放，不合并加载器。`resources/dll/` 不提交 `.a` / `.o`。
+- 入口：`ppx-test`（`ppx_testkit.cli:main`），不是 `main.py`。
+
+# 硬件与进程
+- 串口、继电器、心跳注册到 `core/context.py` 的 `HardwareContext`。`setup()` 打开供电、电机或心跳后，立刻 `register_emergency_stop`：停心跳、释能、断继电器、释放串口。
+- 断言失败、串口闪断、SIGINT/SIGTERM、Web 停止时，`finally` 必须触发该复位。
+- Web 用工位子进程加载 DLL，不在主进程多线程混载 L5/R3。
+
+# 扩展
+- 新工位使用 `@register_station`，禁止在 `core/factory.py` 或 `web/catalog.py` 堆 if-elif 工位表。
+- 迁移完成前保留旧模块 re-export。
 
 # Python 代码编写规范
-1. 所有函数与方法必须包含类型提示 (Type Hints)。
-2. 业务路径使用 logging。print 只允许出现在 cli.py 的 list / ports / show，以及启动前配置错误输出。
-3. 串口与硬件路径必须包含 try-except-finally，异常写入当次 full.log。
+1. Python >= 3.10。所有函数与方法必须包含类型提示。配置模型使用 Pydantic 或 dataclass。
+2. 业务路径使用 logging。`print` 只允许出现在 `cli.py` 的 `list` / `ports` / `show`，以及启动前配置错误输出。
+3. 串口与硬件路径必须包含 try-except-finally，异常写入当次 `full.log`。
 4. 必须包含清晰的中文注释，说明函数功能、入参及返回值。
 5. 重构不得改变原有自动化测试的通过/失败判定。搬代码时用现有单测锁住行为。
+6. 修改后通过 `pytest -q` 与 `ruff check .`。

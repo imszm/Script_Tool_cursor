@@ -4,7 +4,7 @@
 
     full.log         全程完整日志（DEBUG 及以上，所有模块、串口收发十六进制、异常堆栈）
     error.log        WARNING 及以上
-    device_raw.log   被测设备原始串口输出（按大小轮转，不进入控制台）
+    device_raw.log   被测设备原始串口输出（有内容才创建，按大小轮转，不进入控制台）
     config.yaml      本次生效配置快照（由 CLI 写入）
     summary.json     运行统计（由执行器写入）
 
@@ -30,6 +30,8 @@ from ppx_testkit.settings import LoggingSettings
 from ppx_testkit.utils.paths import resolve_path
 
 RAW_LOGGER_ROOT = "ppx.raw"
+# 这些库在 DEBUG 下会把导入、COM 调用刷进 full.log。业务日志保持 DEBUG，它们提到 WARNING。
+_QUIET_LIBRARIES = ("PIL", "pywinauto", "comtypes")
 
 FILE_FORMAT = "%(asctime)s.%(msecs)03d | %(levelname)-8s | %(threadName)s | %(name)s:%(lineno)d | %(message)s"
 CONSOLE_FORMAT = "%(asctime)s | %(levelname)-7s | %(message)s"
@@ -75,8 +77,61 @@ class _State:
     root_handlers_backup: list[logging.Handler] = []
     root_level_backup: int = logging.WARNING
     raw_handlers: list[logging.Handler] = []
+    quiet_levels: dict[str, int] = {}
     prev_sys_hook: Any = None
     prev_thread_hook: Any = None
+
+
+class _LazyRotatingFileHandler(logging.Handler):
+    """第一次写出时才创建轮转文件。没有串口原文的工位不留空的 device_raw.log。"""
+
+    def __init__(self, path: Path, max_bytes: int, backup_count: int) -> None:
+        super().__init__()
+        self._path = path
+        self._max_bytes = max_bytes
+        self._backup_count = backup_count
+        self._inner: logging.Handler | None = None
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """把一条原始输出写入轮转文件。文件在第一条记录时创建。
+
+        :param record: 日志记录。
+        """
+        try:
+            if self._inner is None:
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                inner = logging.handlers.RotatingFileHandler(
+                    self._path,
+                    maxBytes=self._max_bytes,
+                    backupCount=self._backup_count,
+                    encoding="utf-8",
+                )
+                if self.formatter is not None:
+                    inner.setFormatter(self.formatter)
+                self._inner = inner
+            self._inner.emit(record)
+        except Exception:  # noqa: BLE001 - 写原文失败不能打断测试
+            self.handleError(record)
+
+    def flush(self) -> None:
+        """刷出已打开的文件。还没写过时不做任何事。"""
+        if self._inner is not None:
+            self._inner.flush()
+
+    def close(self) -> None:
+        """关闭已打开的轮转文件。"""
+        if self._inner is not None:
+            self._inner.close()
+            self._inner = None
+        super().close()
+
+
+def _quiet_library_logs() -> None:
+    """把会刷屏的第三方库调到 WARNING，并记住原级别，退出时还原。"""
+    for name in _QUIET_LIBRARIES:
+        lib = logging.getLogger(name)
+        _State.quiet_levels[name] = lib.level
+        lib.setLevel(logging.WARNING)
 
 
 def _make_run_dir(root: Path, station: str, run_id: str) -> Path:
@@ -154,11 +209,10 @@ def setup_logging(
                 handlers.append(eh)
 
                 ctx.raw_log = run_dir / "device_raw.log"
-                raw_handler = logging.handlers.RotatingFileHandler(
+                raw_handler = _LazyRotatingFileHandler(
                     ctx.raw_log,
-                    maxBytes=settings.raw_max_bytes,
-                    backupCount=settings.raw_backup_count,
-                    encoding="utf-8",
+                    settings.raw_max_bytes,
+                    settings.raw_backup_count,
                 )
                 raw_handler.setFormatter(logging.Formatter(RAW_FORMAT, DATE_FORMAT))
             except OSError as exc:
@@ -178,6 +232,7 @@ def setup_logging(
             root.removeHandler(h)
         root.addHandler(logging.handlers.QueueHandler(main_queue))
         root.setLevel(logging.DEBUG)
+        _quiet_library_logs()
 
         raw_root = logging.getLogger(RAW_LOGGER_ROOT)
         raw_root.propagate = False
@@ -276,5 +331,8 @@ def shutdown_logging() -> None:
             sys.excepthook = _State.prev_sys_hook
         if _State.prev_thread_hook is not None:
             threading.excepthook = _State.prev_thread_hook
+        for name, level in _State.quiet_levels.items():
+            logging.getLogger(name).setLevel(level)
+        _State.quiet_levels = {}
         logging.captureWarnings(False)
         _State.ctx = None
