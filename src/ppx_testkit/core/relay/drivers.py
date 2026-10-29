@@ -95,7 +95,9 @@ class ServoDriver:
                 log.warning("舵机指令发送失败 (第 %d/%d 次): %s", attempt, self.retries, exc)
                 self.transport.close()
                 if attempt < self.retries:
-                    self._sleep(self.retry_delay_s)
+                    # 第一次等待仍是 retry_delay_s，之后指数增加，避免感性负载抖动时立刻重打。
+                    delay = min(2.0, self.retry_delay_s * (2 ** (attempt - 1)))
+                    self._sleep(delay)
             finally:
                 if self.open_per_command:
                     self.transport.close()

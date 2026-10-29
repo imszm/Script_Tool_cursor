@@ -1,9 +1,15 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableExtensions EnableDelayedExpansion
 
-:: Force UTF-8 encoding
-chcp 65001 > nul
+rem Field sync for several test PCs sharing this repo.
+rem config\local.yaml, logs\ and reports\ stay on this machine and are never staged.
+rem If a pull/rebase conflicts, it is aborted so the worktree is not left locked.
 
+cd /d "%~dp0"
+>nul 2>&1 chcp 65001
+set "GIT_TERMINAL_PROMPT=0"
+set "GIT_MERGE_AUTOEDIT=no"
+set "RC=0"
 title Git Auto-Sync Tool
 
 echo ===========================================
@@ -11,172 +17,244 @@ echo       Git Repository Auto-Sync Tool
 echo ===========================================
 echo.
 
-:: ── Pre-flight Checks ──────────────────────────────────────────────
-
-git --version > nul 2>&1
-if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Git not found. Please install Git and add it to PATH.
-    goto :exit
+git --version >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Git not found. Install Git and add it to PATH.
+    goto :fail
 )
 
-git rev-parse --is-inside-work-tree > nul 2>&1
-if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Not a Git repository. Please run from your project root.
-    goto :exit
+git rev-parse --is-inside-work-tree >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Not a Git repository. Run this script from the project root.
+    goto :fail
 )
 
-:: ── .gitignore Guard ───────────────────────────────────────────────
+call :clear_stale_lock
+if errorlevel 1 goto :fail
 
-echo [Check] Verifying .gitignore rules...
-set NEED_UPDATE=0
+call :abort_in_progress
+if errorlevel 1 goto :fail
 
-if not exist ".gitignore" (
-    echo [WARN]  No .gitignore found. Creating with recommended exclusions...
-    call :write_gitignore
-    set NEED_UPDATE=1
-) else (
-    findstr /i "Tool\\logs" .gitignore > nul 2>&1
-    if !ERRORLEVEL! neq 0 (
-        echo [WARN]  Log patterns missing from .gitignore. Appending...
-        call :append_gitignore
-        set NEED_UPDATE=1
-    ) else (
-        echo [OK]    .gitignore already covers log files.
-    )
+for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD') do set "BRANCH=%%b"
+if "!BRANCH!"=="HEAD" (
+    echo [ERROR] Detached HEAD. Check out a branch before syncing.
+    goto :fail
 )
+echo [OK]    Branch: !BRANCH!
 
-if !NEED_UPDATE! equ 1 (
-    echo.
-    echo   Exclusion patterns added to .gitignore:
-    echo     Tool/logs/            
-    echo     Tool/Test_Logs/  
-    echo     *.log / *_raw_*.txt / *_error_*.txt / *_full_*.txt ...
-    echo.
-    echo [IMPORTANT] .gitignore only prevents FUTURE tracking.
-    echo   If log files are already committed, run the following ONCE to untrack them:
-    echo.
-    echo     git rm -r --cached Tool/logs/ Tool/Test_Logs/
-    echo     git commit -m "chore: stop tracking log files"
-    echo.
-    set /p "CONT=Continue with sync now? (Y/N): "
-    if /i "!CONT!" neq "Y" (
-        echo Aborted.
-        goto :exit
-    )
-)
+call :ensure_gitignore
+call :protect_local_overrides
+
 echo.
-
-:: ── Step 1: Status ─────────────────────────────────────────────────
-
 echo [1/4] Repository status:
 git status --short
 echo.
 
-:: Exit early if nothing to commit
-set HAS_CHANGES=
-for /f "usebackq" %%i in (`git status --porcelain`) do set HAS_CHANGES=1
-if not defined HAS_CHANGES (
-    echo Nothing to commit. Working tree is already clean.
-    goto :exit
-)
+call :stage_shareable
+if errorlevel 1 goto :fail
 
-:: ── Step 2: Stage ──────────────────────────────────────────────────
-
-echo [2/4] Staging changes (respecting .gitignore)...
-git add .
-echo.
-echo Staged file summary:
-git --no-pager diff --cached --stat
-echo.
-
-:: ── Step 3: Commit ─────────────────────────────────────────────────
-
-set /p "msg=Enter commit message (Press Enter for auto-generated): "
-echo.
-
-if "!msg!"=="" (
-    for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format 'yyyyMMdd_HHmm'"') do set TIMESTAMP=%%i
-    set msg=Routine_update_!TIMESTAMP!
-)
-
-echo [3/4] Committing: "!msg!"
-git commit -m "!msg!"
-if %ERRORLEVEL% neq 0 (
+git diff --cached --quiet
+if errorlevel 1 (
+    echo [2/4] Staged file summary:
+    git --no-pager diff --cached --stat
     echo.
-    echo [ERROR] Commit failed. Please check the output above.
-    goto :exit
-)
-echo.
-
-:: ── Step 4: Push ───────────────────────────────────────────────────
-
-echo [4/4] Pushing to origin/main...
-git push origin main
-
-if %ERRORLEVEL% equ 0 (
+    set "msg="
+    set /p "msg=Enter commit message (Press Enter for auto-generated): "
+    if "!msg!"=="" (
+        for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmm"') do set "TIMESTAMP=%%i"
+        set "msg=Routine_update_!TIMESTAMP!"
+    )
     echo.
-    echo ===========================================
-    echo       SUCCESS: Synced to GitHub.
-    echo ===========================================
+    echo [3/4] Committing: "!msg!"
+    git commit -m "!msg!"
+    if errorlevel 1 (
+        echo [ERROR] Commit failed. No merge or rebase was left in progress.
+        goto :fail
+    )
 ) else (
-    echo.
-    echo ===========================================
-    echo   ERROR: Push failed.
-    echo   Possible causes:
-    echo     - Network / proxy issue
-    echo     - Expired or invalid token
-    echo     - Wrong branch name (main vs master)
-    echo ===========================================
+    echo [2/4] No shareable changes to commit.
+    echo        config\local.yaml, logs\ and reports\ stay on this PC.
+    echo [3/4] Skip commit.
 )
 
-goto :exit
+echo.
+echo [4/4] Updating from origin/!BRANCH! and pushing...
+call :sync_remote
+if errorlevel 1 goto :fail
 
-:: ── Subroutines ────────────────────────────────────────────────────
+echo.
+echo ===========================================
+echo       SUCCESS: Synced with origin/!BRANCH!.
+echo ===========================================
+goto :finish
 
-:write_gitignore
-(
-    echo # === Log and Test Output Files ===
-    echo Tool/logs/
-    echo Tool/Test_Logs/
-    echo *.log
-    echo *_raw_*.txt
-    echo *_error_*.txt
-    echo *_full_*.txt
-    echo *_summary_*.txt
-    echo.
-    echo # === Python Cache ===
-    echo __pycache__/
-    echo *.pyc
-    echo *.pyo
-    echo.
-    echo # === Build Artifacts ===
-    echo build/
-    echo dist/
-    echo *.spec
-    echo.
-    echo # === OS Metadata ===
-    echo .DS_Store
-    echo Thumbs.db
-    echo desktop.ini
-) > .gitignore
-goto :eof
+:clear_stale_lock
+if not exist ".git\index.lock" exit /b 0
+tasklist /FI "IMAGENAME eq git.exe" 2>nul | find /I "git.exe" >nul
+if not errorlevel 1 (
+    echo [ERROR] Another git.exe holds .git\index.lock.
+    echo         Close that window and run this script again.
+    exit /b 1
+)
+echo [WARN]  Removing stale .git\index.lock
+del /f /q ".git\index.lock" >nul 2>&1
+if exist ".git\index.lock" (
+    echo [ERROR] Could not remove .git\index.lock.
+    exit /b 1
+)
+exit /b 0
 
-:append_gitignore
-(
-    echo.
-    echo # === Log and Test Output Files ^(auto-added by git_sync.bat^) ===
-    echo Tool/logs/
-    echo Tool/Test_Logs/
-    echo *.log
-    echo *_raw_*.txt
-    echo *_error_*.txt
-    echo *_full_*.txt
-    echo *_summary_*.txt
-) >> .gitignore
-goto :eof
+:abort_in_progress
+set "STUCK=0"
+if exist ".git\MERGE_HEAD" set "STUCK=1"
+if exist ".git\rebase-merge" set "STUCK=1"
+if exist ".git\rebase-apply" set "STUCK=1"
+if exist ".git\CHERRY_PICK_HEAD" set "STUCK=1"
+if exist ".git\REVERT_HEAD" set "STUCK=1"
+if "!STUCK!"=="0" exit /b 0
 
-:exit
+echo [WARN]  A previous merge, rebase, cherry-pick, or revert is still in progress.
+echo         Aborting it so this PC is not left conflict-locked.
+if exist ".git\MERGE_HEAD" git merge --abort
+if exist ".git\rebase-merge" git rebase --abort
+if exist ".git\rebase-apply" git rebase --abort
+if exist ".git\CHERRY_PICK_HEAD" git cherry-pick --abort
+if exist ".git\REVERT_HEAD" git revert --abort
+if exist ".git\MERGE_HEAD" (
+    echo [ERROR] Could not abort the in-progress merge.
+    exit /b 1
+)
+if exist ".git\rebase-merge" (
+    echo [ERROR] Could not abort the in-progress rebase.
+    exit /b 1
+)
+if exist ".git\rebase-apply" (
+    echo [ERROR] Could not abort the in-progress rebase.
+    exit /b 1
+)
+if exist ".git\CHERRY_PICK_HEAD" (
+    echo [ERROR] Could not abort the in-progress cherry-pick.
+    exit /b 1
+)
+if exist ".git\REVERT_HEAD" (
+    echo [ERROR] Could not abort the in-progress revert.
+    exit /b 1
+)
+echo [OK]    Worktree unlocked.
+exit /b 0
+
+:ensure_gitignore
+if not exist ".gitignore" (
+    echo [WARN]  .gitignore is missing. Writing local-override and test-output rules.
+    (
+        echo /logs/
+        echo /reports/
+        echo config/local.yaml
+    ) > ".gitignore"
+)
+set "GI_CHANGED=0"
+call :ensure_ignore_line "/logs/"
+call :ensure_ignore_line "/reports/"
+call :ensure_ignore_line "config/local.yaml"
+if "!GI_CHANGED!"=="1" (
+    echo [OK]    .gitignore now ignores /logs/, /reports/ and config/local.yaml.
+) else (
+    echo [OK]    .gitignore already ignores local.yaml and test output.
+)
+exit /b 0
+
+:ensure_ignore_line
+rem %~1 is matched as a whole line so a comment cannot satisfy the check.
+findstr /x /l /c:"%~1" ".gitignore" >nul 2>&1
+if errorlevel 1 (
+    >>".gitignore" echo(%~1
+    set "GI_CHANGED=1"
+    echo [WARN]  Added missing .gitignore rule: %~1
+)
+exit /b 0
+
+:protect_local_overrides
+rem If this clone still tracks local.yaml, keep the on-disk COM ports out of the commit.
+rem skip-worktree does not delete the file from the repo, so other PCs will not conflict on pull.
+git ls-files -- "config/local.yaml" | findstr /r /c:"." >nul 2>&1
+if errorlevel 1 exit /b 0
+git update-index --skip-worktree -- "config/local.yaml"
+if errorlevel 1 (
+    echo [WARN]  Could not mark config/local.yaml skip-worktree. It will still be unstaged.
+    exit /b 0
+)
+echo [OK]    Tracked config/local.yaml will not be committed from this PC.
+exit /b 0
+
+:stage_shareable
+rem Do not pass local.yaml or logs as pathspecs. Git returns 1 when a named
+rem path is ignored, which would abort a healthy sync on every test PC.
+git add --all -- .
+if errorlevel 1 (
+    echo [ERROR] git add failed.
+    exit /b 1
+)
+git restore --staged --quiet -- "config/local.yaml" "logs" "reports" >nul 2>&1
+exit /b 0
+
+:sync_remote
+git fetch origin
+if errorlevel 1 (
+    echo [ERROR] git fetch failed. No merge or rebase was started.
+    exit /b 1
+)
+
+call :rebase_onto_origin
+if errorlevel 1 exit /b 1
+
+git push origin HEAD
+if not errorlevel 1 exit /b 0
+
+echo [WARN]  Push was rejected. Fetching and rebasing once more.
+git fetch origin
+if errorlevel 1 (
+    echo [ERROR] Fetch failed after the push was rejected.
+    exit /b 1
+)
+call :rebase_onto_origin
+if errorlevel 1 exit /b 1
+
+git push origin HEAD
+if errorlevel 1 (
+    echo [ERROR] Push failed. Check the network, credentials, or branch protection.
+    echo         The worktree was not left in a merge conflict.
+    exit /b 1
+)
+exit /b 0
+
+:rebase_onto_origin
+git rev-parse --verify --quiet "refs/remotes/origin/!BRANCH!" >nul 2>&1
+if errorlevel 1 (
+    echo [WARN]  origin/!BRANCH! does not exist yet. Skipping rebase.
+    exit /b 0
+)
+git pull --rebase --autostash origin "!BRANCH!"
+if not errorlevel 1 exit /b 0
+
+echo [ERROR] Rebase failed. Aborting so this PC is not left conflict-locked.
+git rebase --abort >nul 2>&1
+if exist ".git\MERGE_HEAD" git merge --abort >nul 2>&1
+if exist ".git\rebase-merge" (
+    echo [ERROR] Rebase is still in progress. Resolve it before the next sync.
+    exit /b 1
+)
+if exist ".git\rebase-apply" (
+    echo [ERROR] Rebase is still in progress. Resolve it before the next sync.
+    exit /b 1
+)
+echo [OK]    Rebase aborted. Worktree is unlocked.
+exit /b 1
+
+:fail
+set "RC=1"
+
+:finish
 echo.
 echo Press any key to exit...
-pause > nul
-endlocal
+pause >nul
+endlocal & exit /b %RC%

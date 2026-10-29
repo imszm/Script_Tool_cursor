@@ -53,6 +53,10 @@ def test_runner_counts_and_summary_json(tmp_path: Path) -> None:
     assert cyc.calls == ["setup", "cycle1", "cycle2", "cycle3", "teardown"]
     data = json.loads((ctx.run_dir / "summary.json").read_text(encoding="utf-8"))  # type: ignore[operator]
     assert data["passed"] == 2 and data["ok"] is False
+    lines = (ctx.run_dir / "cycles.jsonl").read_text(encoding="utf-8").splitlines()  # type: ignore[operator]
+    rows = [json.loads(line) for line in lines]
+    assert [row["passed"] for row in rows] == [True, False, True]
+    assert rows[1]["failed_total"] == 1 and rows[2]["passed_total"] == 2
 
 
 def test_runner_all_pass_ok() -> None:

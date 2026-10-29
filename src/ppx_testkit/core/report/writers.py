@@ -6,6 +6,7 @@ import csv
 import html
 import json
 import logging
+import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from string import Template
@@ -261,6 +262,28 @@ def _render_cell(column: str, value: Any) -> str:
         if _WINDOW_MARK in text:
             return _render_prose(text)
     return html.escape(text)
+
+
+def append_jsonl(path: Path, row: Mapping[str, Any]) -> Path | None:
+    """把一行结果追加到 JSONL，并 flush 到磁盘。
+
+    长稳压测每轮调用一次。进程崩溃或工控机断电后，已完成的轮次仍留在文件里。
+
+    :param path: ``cycles.jsonl`` 路径。父目录不存在时创建。
+    :param row: 一轮可序列化的结果。
+    :return: 写入成功时的路径；磁盘失败时返回 None，不抛异常。
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(dict(row), ensure_ascii=False, default=str) + "\n"
+        with path.open("a", encoding="utf-8", newline="") as fh:
+            fh.write(line)
+            fh.flush()
+            os.fsync(fh.fileno())
+        return path
+    except OSError:
+        log.exception("追加 JSONL 失败: %s", path)
+        return None
 
 
 def write_csv(path: Path, rows: Sequence[Mapping[str, Any]], columns: Sequence[str] | None = None) -> Path | None:

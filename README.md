@@ -70,7 +70,7 @@ python -m ppx_testkit ui --port 8765
 | `mcb_whitebox` | L5 | `whitebox.mcb_region` | MCB 白盒，region v1 |
 | `l5_mcb_hall_diag` | L5 | `whitebox.mcb_hall_diag` | MCB 霍尔体检 |
 | `r3_mcb_whitebox` | R3 | `whitebox.r3_mcb` | MCB 电机白盒，菜单 / 自动 / 稳定性 |
-| `lrd_debug` | L5 | `whitebox.lrd_debug` | 灯板单次点灯并回读。逻辑在 `tools/lrd_debug.py` |
+| `lrd_debug` | L5 | `whitebox.lrd_debug` | 灯板单次点灯并回读 |
 
 ### 上下电与继电器压测
 
@@ -80,7 +80,7 @@ python -m ppx_testkit ui --port 8765
 | `nfc_power_cycle` | 通用 | `power_cycle.relay_power_on` | NFC 开关机，异常关键字熔断断电 |
 | `handle_power_cycle` | 通用 | `power_cycle.relay_power_on` | 把手继电器循环，不读设备日志 |
 | `w3_power_button` | W3 | `power_cycle.power_button` | 电源键开关机，命中停止关键字保留现场 |
-| `relay_probe` | 通用 | `power_cycle.relay_probe` | 继电器极性人工探测。逻辑在 `tools/relay_probe.py` |
+| `relay_probe` | 通用 | `power_cycle.relay_probe` | 继电器极性人工探测 |
 
 ### PCTool 与整机 GUI 压测
 
@@ -109,10 +109,10 @@ python -m ppx_testkit ui --port 8765
 
 | 工位 | 机型 | 应用入口 | 说明 |
 | --- | --- | --- | --- |
-| `mouse_locate` | 通用 | `pctool.mouse_locate` | 鼠标坐标采样。逻辑在 `tools/mouse_locate.py` |
+| `mouse_locate` | 通用 | `pctool.mouse_locate` | 鼠标坐标采样 |
 | `inspect_controls` | 通用 | `pctool.inspect_controls` | 导出窗口控件名 |
-| `speed_calc` | 通用 | `calculators.speed_calc` | 车速计算。逻辑在 `tools/calculators/speed_calc.py` |
-| `time_diff` | 通用 | `calculators.time_diff` | 时间差。逻辑在 `tools/calculators/time_diff.py` |
+| `speed_calc` | 通用 | `calculators.speed_calc` | 车速计算 |
+| `time_diff` | 通用 | `calculators.time_diff` | 时间差 |
 
 FCT 和 W3 点击压测的坐标是旧屏幕上的绝对坐标。换电脑后用 `mouse_locate` 重采，控件名用 `inspect_controls` 核对。
 
@@ -128,9 +128,8 @@ src/ppx_testkit/
   settings.py  station_schema.py  配置合并与校验
   logger.py
   core/     serial  relay  protocol  monitor  runner  report  gui
-  profiles/ l5.py  p3.py  r3.py
-  apps/     工站流程；部分文件只重导出 tools
-  tools/    calculators  mouse_locate  relay_probe  lrd_debug  r3_menu
+  profiles/ l5.py  p3.py  r3.py  w3.py
+  apps/     工站流程，含计算器、鼠标坐标、继电器探测、灯板调试、R3 菜单
   web/      python -m ppx_testkit.web
 resources/dll/l5/   resources/dll/r3/   resources/dll/manifest.json
 resources/include/  头文件
@@ -150,7 +149,7 @@ tests/hardware                    真实串口 / 继电器
 新增一个工位：
 
 1. 在 `config/stations/` 新建 `<工位名>.yaml`，能复用的继电器口、关键字和点击坐标用 `include` 引用 `_fragments/`。
-2. `app:` 指向已有模块，或在 `src/ppx_testkit/apps/<域>/` 实现 `run(settings, ctx) -> int`。辅助工具的流程写在 `tools/`，`apps/` 只做重导出。
+2. `app:` 指向已有模块，或在 `src/ppx_testkit/apps/<域>/` 实现 `run(settings, ctx) -> int`。机型差异写在 `src/ppx_testkit/profiles/`。辅助工具同样写在 `apps/`，用 `@register_tool` 登记。不要使用已删除的 `src/ppx_testkit/tools/`。
 3. 在 `src/ppx_testkit/station_schema.py` 登记该应用的配置段和串口名。
 4. 串口号只写 `config/local.yaml` 或通过 `--port` 传入。
 5. 先 `ppx-test show <工位名>`，再限制轮次试跑。

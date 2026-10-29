@@ -162,6 +162,50 @@ def test_read_until_idle_gap() -> None:
     assert time.monotonic() - t0 < 1.0
 
 
+def test_transient_io_reopens_with_backoff_and_new_port() -> None:
+    factory = FakeSerialFactory()
+    sleeps: list[float] = []
+
+    class Finder:
+        def find(self, matcher: object, *, exclude: object = (), name: str = "") -> str:
+            return "COM9"
+
+    t = SerialTransport(
+        "COM1", 9600, factory=factory, recover_attempts=2,
+        recover_base_delay_s=0.25, recover_max_delay_s=1.0, sleep=sleeps.append,
+    )
+    t.open()
+    t.bind_locator(Finder(), PortMatcher(description_contains=["CH340"]))  # type: ignore[arg-type]
+    factory.last.fail_on["write"] = serial.SerialException("ClearCommError")
+    assert t.write(b"\x11") == 1
+    assert t.port == "COM9" and sleeps == [0.25]
+
+
+def test_recover_gives_up_after_exponential_delays() -> None:
+    factory = FakeSerialFactory()
+    factory.setup = lambda handle: handle.fail_on.update(write=serial.SerialException("dead"))
+    sleeps: list[float] = []
+    t = SerialTransport(
+        "COM1", 9600, factory=factory, recover_attempts=2,
+        recover_base_delay_s=0.1, recover_max_delay_s=0.15, sleep=sleeps.append,
+    )
+    t.open()
+    with pytest.raises(SerialDisconnectedError, match="写入"):
+        t.write(b"\x01")
+    assert sleeps == [0.1, 0.15]
+
+
+def test_timeout_does_not_reconnect() -> None:
+    factory = FakeSerialFactory()
+    sleeps: list[float] = []
+    t = SerialTransport("COM1", 9600, factory=factory, recover_attempts=3, sleep=sleeps.append)
+    t.open()
+    factory.last.fail_on["write"] = serial.SerialTimeoutException("wt")
+    with pytest.raises(SerialTimeoutError):
+        t.write(b"\x01")
+    assert sleeps == []
+
+
 def test_reconnect_switches_port(make_transport, fake_factory) -> None:
     t = make_transport("COM1")
     first = fake_factory.last

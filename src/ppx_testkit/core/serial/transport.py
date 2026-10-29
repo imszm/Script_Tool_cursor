@@ -21,6 +21,7 @@ import serial
 from ppx_testkit.core.serial.port_finder import PortFinder, PortMatcher
 from ppx_testkit.exceptions import (
     ConfigError,
+    PortNotFoundError,
     SerialDisconnectedError,
     SerialOpenError,
     SerialTimeoutError,
@@ -49,6 +50,10 @@ class SerialEndpoint:
     log_traffic: bool = True
     # 高速设备日志时扩大驱动接收缓冲。按顺序尝试，失败再试下一个。空列表表示不改。
     rx_buffer_sizes: list[int] = field(default_factory=list)
+    # 读写瞬断后的关闭重连次数。0 表示保持“一次失败即断开”。超时不重连。
+    recover_attempts: int = 3
+    recover_base_delay_s: float = 0.2
+    recover_max_delay_s: float = 2.0
 
     def __post_init__(self) -> None:
         if self.baudrate <= 0:
@@ -63,6 +68,10 @@ class SerialEndpoint:
             raise ConfigError(f"未知编码: {self.encoding}") from exc
         if any(size <= 0 for size in self.rx_buffer_sizes):
             raise ConfigError(f"rx_buffer_sizes 中的每一项必须 > 0，实际 {self.rx_buffer_sizes}")
+        if self.recover_attempts < 0:
+            raise ConfigError(f"recover_attempts 不能为负数，实际 {self.recover_attempts}")
+        if self.recover_base_delay_s < 0 or self.recover_max_delay_s < 0:
+            raise ConfigError("recover_base_delay_s / recover_max_delay_s 不能为负数")
 
 
 class SerialTransport:
@@ -80,6 +89,9 @@ class SerialTransport:
         rx_buffer_sizes: Iterable[int] = (),
         factory: SerialFactory | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        recover_attempts: int = 0,
+        recover_base_delay_s: float = 0.2,
+        recover_max_delay_s: float = 2.0,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
@@ -90,9 +102,15 @@ class SerialTransport:
         self.name = name
         self.log_traffic = log_traffic
         self.rx_buffer_sizes = tuple(int(size) for size in rx_buffer_sizes)
+        self.recover_attempts = max(0, recover_attempts)
+        self.recover_base_delay_s = recover_base_delay_s
+        self.recover_max_delay_s = max(recover_base_delay_s, recover_max_delay_s)
         self._factory = factory or default_factory
         self._sleep = sleep
         self._ser: Any = None
+        self._finder: PortFinder | None = None
+        self._matcher: PortMatcher | None = None
+        self._exclude: tuple[str, ...] = ()
         self._lock = threading.RLock()
         self.log = logging.getLogger(f"ppx_testkit.serial.{name}")
 
@@ -109,6 +127,9 @@ class SerialTransport:
             name=name,
             log_traffic=ep.log_traffic,
             rx_buffer_sizes=ep.rx_buffer_sizes,
+            recover_attempts=ep.recover_attempts,
+            recover_base_delay_s=ep.recover_base_delay_s,
+            recover_max_delay_s=ep.recover_max_delay_s,
             **kwargs,
         )
 
@@ -155,14 +176,45 @@ class SerialTransport:
             except Exception as exc:  # noqa: BLE001 - close 必须吞掉异常以保证 finally 链路完整
                 self.log.warning("关闭串口 %s 时发生异常（已忽略）: %s", self.port, exc)
 
+    def bind_locator(self, finder: PortFinder, matcher: PortMatcher, exclude: Iterable[str] = ()) -> None:
+        """记下找口器，供瞬断后按同一规则重新定位端口。
+
+        :param finder: 枚举系统串口的查找器。
+        :param matcher: 打开时用的匹配规则。显式 ``port`` 时仍返回该端口名。
+        :param exclude: 重找时排除的其它端口。
+        """
+        self._finder = finder
+        self._matcher = matcher
+        self._exclude = tuple(exclude)
+
     def reconnect(self, new_port: str | None = None, delay_s: float = 0.0) -> None:
+        """关闭后可选等待，再按新端口或当前端口打开。
+
+        :param new_port: 非空时改绑到该端口。
+        :param delay_s: 关闭后、打开前的等待秒数。
+        :raises SerialOpenError: 重新打开失败。
+        """
         with self._lock:
-            self.close()
-            if delay_s > 0:
-                self._sleep(delay_s)
-            if new_port:
-                self.port = new_port
-            self.open()
+            self._reconnect_locked(new_port, delay_s)
+
+    def _reconnect_locked(self, new_port: str | None, delay_s: float) -> None:
+        """调用方已持有 ``_lock``。"""
+        self.close()
+        if delay_s > 0:
+            self._sleep(delay_s)
+        if new_port:
+            self.port = new_port
+        self.open()
+
+    def _locate_port(self) -> str | None:
+        """按绑定的规则重新找口。没有找口器时返回 None，表示沿用当前端口。"""
+        if self._finder is None or self._matcher is None:
+            return None
+        try:
+            return self._finder.find(self._matcher, exclude=self._exclude, name=self.name)
+        except (PortNotFoundError, ConfigError) as exc:
+            self.log.warning("重新定位串口 %s 失败，沿用 %s: %s", self.name, self.port, exc)
+            return None
 
     def __enter__(self) -> SerialTransport:
         self.open()
@@ -179,16 +231,39 @@ class SerialTransport:
         return ser
 
     def _guard(self, op: str, fn: Callable[[Any], R]) -> R:
+        """执行一次收发。瞬断时按指数退避关闭并重连，超时不重连。
+
+        ``recover_attempts`` 为 0 时，第一次 ``SerialException`` / ``ClearCommError``
+        仍立刻变成 :class:`SerialDisconnectedError`。
+        """
         with self._lock:
-            ser = self._require_open()
-            try:
-                return fn(ser)
-            except serial.SerialTimeoutException as exc:
-                raise SerialTimeoutError(self.port, f"{op} 超时: {exc}") from exc
-            except (serial.SerialException, OSError, ValueError, TypeError, AttributeError) as exc:
-                # TypeError/AttributeError: pyserial 在句柄被系统回收后可能抛出
-                self.log.error("串口 %s %s 失败，判定为断开: %s", self.port, op, exc)
-                raise SerialDisconnectedError(self.port, f"{op} 失败: {exc}") from exc
+            last_exc: BaseException | None = None
+            for attempt in range(self.recover_attempts + 1):
+                try:
+                    return fn(self._require_open())
+                except serial.SerialTimeoutException as exc:
+                    raise SerialTimeoutError(self.port, f"{op} 超时: {exc}") from exc
+                except (serial.SerialException, OSError, ValueError, TypeError, AttributeError) as exc:
+                    # TypeError/AttributeError: pyserial 在句柄被系统回收后可能抛出。
+                    # ClearCommError 由 pyserial 包在 SerialException 里。
+                    last_exc = exc
+                    if attempt >= self.recover_attempts:
+                        break
+                    delay = min(self.recover_max_delay_s, self.recover_base_delay_s * (2**attempt))
+                    self.log.warning(
+                        "串口 %s %s 瞬断，%.2fs 后第 %d/%d 次重连: %s",
+                        self.port, op, delay, attempt + 1, self.recover_attempts, exc,
+                    )
+                    try:
+                        new_port = self._locate_port()
+                        if new_port and new_port != self.port:
+                            self.log.info("串口 %s 从 %s 改为 %s", self.name, self.port, new_port)
+                        self._reconnect_locked(new_port, delay)
+                    except (SerialOpenError, PortNotFoundError, ConfigError) as reopen_exc:
+                        last_exc = reopen_exc
+                        self.log.warning("串口 %s 重连失败: %s", self.port, reopen_exc)
+            self.log.error("串口 %s %s 失败，判定为断开: %s", self.port, op, last_exc)
+            raise SerialDisconnectedError(self.port, f"{op} 失败: {last_exc}") from last_exc
 
     # ------------------------------------------------------------ 读写
     def write(self, data: bytes, *, flush: bool = True) -> int:
@@ -344,8 +419,10 @@ def open_endpoint(
     auto_open: bool = True,
 ) -> SerialTransport:
     """按端点配置定位端口并（可选）打开串口。"""
-    port = (finder or PortFinder()).find(ep.match, exclude=exclude, name=name)
+    locator = finder or PortFinder()
+    port = locator.find(ep.match, exclude=exclude, name=name)
     transport = SerialTransport.from_endpoint(ep, port, name=name, factory=factory)
+    transport.bind_locator(locator, ep.match, exclude)
     if auto_open:
         transport.open()
     return transport

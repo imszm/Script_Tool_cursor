@@ -63,6 +63,7 @@ class RegionCodecV1:
     """L5：数据存放在 DLL 全局变量 g_ppx_region_data 中。"""
 
     def __init__(self, dll: PpxDll) -> None:
+        self.dll = dll
         self._format = dll.bind("ppx_com_region_format", [ctypes.c_int, ctypes.POINTER(RegionMsg), ctypes.c_void_p],
                                 ctypes.c_uint16)
         self._parse = dll.bind("ppx_com_region_parse",
@@ -100,6 +101,7 @@ class RegionCodecV2:
     """R3：无全局变量，format/parse 使用 ppx_region_ctrl_t。"""
 
     def __init__(self, dll: PpxDll) -> None:
+        self.dll = dll
         self._format = dll.bind("ppx_com_region_format",
                                 [ctypes.c_int, ctypes.POINTER(RegionCtrlV2), ctypes.c_void_p], ctypes.c_uint16)
         self._packet_parse = dll.bind("ppx_com_packet_parse",
@@ -165,6 +167,25 @@ class RegionClient:
         self.retry_delay_s = retry_delay_s
         self.lock = threading.RLock()
         self.log = logging.getLogger(f"ppx_testkit.protocol.{name}")
+        self._closed = False
+
+    def close(self) -> None:
+        """释放编解码器持有的 DLL。串口由打开它的一方关闭。可重复调用。"""
+        if self._closed:
+            return
+        self._closed = True
+        dll = getattr(self.codec, "dll", None)
+        close_dll = getattr(dll, "close", None)
+        if close_dll is not None:
+            close_dll()
+
+    def __enter__(self) -> RegionClient:
+        """进入协议会话，返回自身。"""
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        """离开会话时释放 DLL，不吞掉原异常。"""
+        self.close()
 
     # ------------------------------------------------------------ 底层
     def _exchange(self, cmd: int, reg: int, nums: int, label: str, *, expect_response: bool = True) -> ParsedFrame | None:

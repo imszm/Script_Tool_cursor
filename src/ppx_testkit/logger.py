@@ -18,6 +18,7 @@ import datetime as _dt
 import json
 import logging
 import logging.handlers
+import os
 import queue
 import sys
 import tempfile
@@ -60,7 +61,10 @@ class RunContext:
             return None
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
+            with path.open("w", encoding="utf-8", newline="") as fh:
+                fh.write(content)
+                fh.flush()
+                os.fsync(fh.fileno())
             return path
         except OSError:
             logging.getLogger(__name__).exception("写入运行产物失败: %s", path)

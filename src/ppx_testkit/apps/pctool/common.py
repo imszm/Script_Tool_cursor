@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from ppx_testkit.core.gui.screen import Point, client_to_screen
 from ppx_testkit.core.report.writers import write_detail_reports
 from ppx_testkit.exceptions import ConfigError, ElementNotFoundError, GuiError, WindowNotFoundError
 from ppx_testkit.logger import RunContext
@@ -103,6 +104,14 @@ class PcToolWindow:
         self._aw = AppWindow(title=cfg.title, title_re=cfg.title_re, backend=cfg.backend,
                              connect_timeout_s=cfg.connect_timeout_s)
 
+    def prepare(self, *, size: tuple[int, int] | None = None) -> tuple[int, int, int, int]:
+        """点击前恢复最小化、可选固定尺寸并置前。
+
+        :param size: 外框宽高。空则不改窗口大小。
+        :return: 客户区屏幕矩形。
+        """
+        return self._aw.prepare(size=size)
+
     def connect(self) -> PcToolWindow:
         self._aw.connect()
         criteria = self.cfg.window_criteria()
@@ -130,6 +139,10 @@ class PcToolWindow:
         return ctrl
 
     def click(self, ref: ControlRef, *, invoke: bool = False) -> None:
+        try:
+            self.prepare()
+        except GuiError:
+            log.warning("点击前无法标准化窗口 %s，仍按控件点击", self.cfg.describe(), exc_info=True)
         ctrl = self._control(ref)
         try:
             if invoke:
@@ -167,6 +180,22 @@ class PcToolWindow:
 
     def dump_controls(self) -> str:
         return self._aw.dump_controls()
+
+
+def resolve_click(point: Point, origin: Point | None, *, space: str) -> Point:
+    """按坐标空间得到本次屏幕点击点。
+
+    ``screen`` 保持 yaml 里的绝对坐标。``client`` 把点看成客户区左上角的偏移。
+    没有客户区原点时退回原坐标。
+
+    :param point: 配置中的点。
+    :param origin: 客户区左上角。``space`` 为 ``client`` 时使用。
+    :param space: ``screen`` 或 ``client``。
+    :return: 屏幕坐标。
+    """
+    if space != "client" or origin is None:
+        return point
+    return client_to_screen(origin, point)
 
 
 def capture_window(window: Any, ctx: RunContext | None, name: str) -> Path | None:

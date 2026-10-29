@@ -37,6 +37,7 @@ log = logging.getLogger(__name__)
 
 class BleCodecV1:
     def __init__(self, dll: PpxDll) -> None:
+        self.dll = dll
         self._format = dll.bind("ppx_com_ble_format", [ctypes.c_int, ctypes.POINTER(BleMsg), ctypes.c_void_p],
                                 ctypes.c_uint16)
         self._parse = dll.bind("ppx_com_ble_parse",
@@ -83,6 +84,25 @@ class BleClient:
         self.dev_id = dev_id
         self.rx_timeout_s = rx_timeout_s
         self.lock = threading.RLock()
+        self._closed = False
+
+    def close(self) -> None:
+        """释放 BLE DLL。串口由打开它的一方关闭。可重复调用。"""
+        if self._closed:
+            return
+        self._closed = True
+        dll = getattr(self.codec, "dll", None)
+        close_dll = getattr(dll, "close", None)
+        if close_dll is not None:
+            close_dll()
+
+    def __enter__(self) -> BleClient:
+        """进入 BLE 会话，返回自身。"""
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        """离开会话时释放 DLL，不吞掉原异常。"""
+        self.close()
 
     def _exchange(self, cmd: int, reg: int, timeout_s: float | None) -> BleResult:
         timeout = self.rx_timeout_s if timeout_s is None else timeout_s

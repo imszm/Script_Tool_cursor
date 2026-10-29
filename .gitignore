@@ -8,6 +8,7 @@ Tool/Test_Logs/
 *_summary_*.txt
 
 # ppx_testkit 运行产物
+# git_sync.bat 按整行检查下面三行，缺了才追加，避免重复写入造成多机冲突。
 /logs/
 /reports/
 config/local.yaml
@@ -41,21 +42,3 @@ dist/
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# === Log and Test Output Files (auto-added by git_sync.bat) ===
-Tool/logs/
-Tool/Test_Logs/
-*.log
-*_raw_*.txt
-*_error_*.txt
-*_full_*.txt
-*_summary_*.txt
-
-# === Log and Test Output Files (auto-added by git_sync.bat) ===
-Tool/logs/
-Tool/Test_Logs/
-*.log
-*_raw_*.txt
-*_error_*.txt
-*_full_*.txt
-*_summary_*.txt

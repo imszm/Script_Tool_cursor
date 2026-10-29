@@ -18,14 +18,15 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
-from ppx_testkit.apps.pctool.common import write_reports
+from ppx_testkit.apps.pctool.common import resolve_click, write_reports
 from ppx_testkit.core.gui.process import PsutilProcessControl, TitleWindowProbe
 from ppx_testkit.core.gui.screen import ScreenSettings, is_failsafe
 from ppx_testkit.core.runner import CycleResult, RunSummary, StressRunner
 from ppx_testkit.exceptions import ConfigError, GuiError, TestAbort
 from ppx_testkit.logger import RunContext
+from ppx_testkit.profiles.w3 import W3
 from ppx_testkit.settings import AppSettings
 
 log = logging.getLogger(__name__)
@@ -57,11 +58,15 @@ class W3StressConfig:
     actions: list[ClickAction]
     cycles: int = 30000
     program_path: str | None = None
-    process_keyword: str = "EW01_PCTOOL"
+    process_keyword: str = W3.pctool.process_keyword
     kill_timeout_s: float = 5.0
     restart_wait_s: float = 10.0
     screenshot_on_error: bool = True
     screen: ScreenSettings = field(default_factory=ScreenSettings)
+    # screen：yaml 里的点就是屏幕绝对坐标，和旧脚本一致。
+    # client：点是窗口客户区左上角的偏移，窗口挪动后仍然点在按钮上。
+    coordinate_space: Literal["screen", "client"] = "screen"
+    window_size: tuple[int, int] | None = None
 
     def __post_init__(self) -> None:
         if self.cycles <= 0:
@@ -70,6 +75,10 @@ class W3StressConfig:
             raise ConfigError("stress.actions 至少需要一个动作")
         if not self.window_title:
             raise ConfigError("stress.window_title 不能为空")
+        if self.coordinate_space not in ("screen", "client"):
+            raise ConfigError(f"stress.coordinate_space 只能是 screen 或 client，实际 {self.coordinate_space}")
+        if self.window_size is not None and (self.window_size[0] <= 0 or self.window_size[1] <= 0):
+            raise ConfigError(f"stress.window_size 必须为正数，实际 {self.window_size}")
 
 
 # ============================================================ 依赖协议
@@ -110,6 +119,7 @@ class W3PcToolStressCycle:
         self.valid_click_count = 0
         self.restarts = 0
         self.rows: list[dict[str, Any]] = []
+        self._client_origin: Point | None = None
 
     def setup(self) -> None:
         log.info("W3 PCTOOL 压力测试开始，目标窗口 '%s'，每轮 %d 个动作", self.cfg.window_title, len(self.cfg.actions))
@@ -120,6 +130,7 @@ class W3PcToolStressCycle:
                 log.warning("检测到目标窗口已关闭，可能是软件闪退，尝试重新启动软件...")
                 if not self.restart_software():
                     raise TestAbort("软件重新启动失败，脚本停止执行。")
+            self._client_origin = self._prepare_window()
             for action in self.cfg.actions:
                 if not self.probe.exists(self.cfg.window_title):
                     raise TestAbort(f"执行“{action.label}”前检测到目标窗口已关闭，可能是软件闪退。")
@@ -139,16 +150,30 @@ class W3PcToolStressCycle:
         log.info("脚本结束，总点击次数：%d，有效点击次数：%d", self.click_count, self.valid_click_count)
 
     # ------------------------------------------------------------ 步骤
+    def _prepare_window(self) -> Point | None:
+        """恢复最小化、按需固定尺寸并置前。失败时返回 None，绝对坐标点击保持原样。"""
+        prepare = getattr(self.probe, "prepare", None)
+        if not callable(prepare):
+            return None
+        box = prepare(self.cfg.window_title, size=self.cfg.window_size)
+        if not box:
+            return None
+        return int(box[0]), int(box[1])
+
+    def _screen_point(self, point: Point) -> Point:
+        return resolve_click(point, self._client_origin, space=self.cfg.coordinate_space)
+
     def _perform(self, action: ClickAction) -> None:
-        self.screen.click(action.point, label=action.label)
+        point = self._screen_point(action.point)
+        self.screen.click(point, label=action.label)
         self.click_count += 1
-        log.info("第 %d 次点击，位置 %s，操作：%s", self.click_count, action.point, action.label)
+        log.info("第 %d 次点击，位置 %s，操作：%s", self.click_count, point, action.label)
         if action.count_valid:
             self.valid_click_count += 1
             log.info("有效点击次数更新为：%d", self.valid_click_count)
         if action.input_text is not None:
             self._sleep(action.input_settle_s)
-            self.screen.click(action.point, label=action.label)
+            self.screen.click(point, label=action.label)
             self.screen.hotkey("ctrl", "a")
             self.screen.press("backspace")
             self.screen.type_text(action.input_text, interval=action.type_interval_s)

@@ -13,6 +13,76 @@ from ppx_testkit.exceptions import ElementNotFoundError, GuiError, WindowNotFoun
 log = logging.getLogger(__name__)
 
 
+def _bounds(wrapper: Any) -> Any:
+    """读取窗口外框。``rectangle`` 可能是方法或属性。"""
+    rect = wrapper.rectangle
+    return rect() if callable(rect) else rect
+
+
+def normalize_window(wrapper: Any, *, size: tuple[int, int] | None = None) -> tuple[int, int, int, int]:
+    """取消最小化，可选固定外框尺寸，再置前。返回客户区的屏幕矩形。
+
+    左上角保持不动，只在传入 ``size`` 时改宽高。读不到客户区时退回窗口外框。
+    激活失败只记日志，仍返回矩形，避免一次焦点切换失败就中断点击。
+
+    :param wrapper: pywinauto 窗口包装，至少要能读矩形。
+    :param size: ``(宽, 高)`` 像素。空则不改尺寸。
+    :return: ``(left, top, right, bottom)``，客户区映射到屏幕坐标。
+    :raises GuiError: 要求固定尺寸但宽或高不是正数。
+    """
+    is_minimized = getattr(wrapper, "is_minimized", None)
+    if callable(is_minimized) and is_minimized():
+        restore = getattr(wrapper, "restore", None)
+        if callable(restore):
+            try:
+                restore()
+                log.info("窗口已从最小化恢复")
+            except Exception as exc:  # noqa: BLE001 - 恢复失败时仍尝试激活
+                log.warning("恢复最小化窗口失败: %s", exc)
+    if size is not None:
+        width, height = size
+        if width <= 0 or height <= 0:
+            raise GuiError(f"窗口尺寸必须为正数，实际 {size}")
+        rect = _bounds(wrapper)
+        move = getattr(wrapper, "move_window", None)
+        if callable(move):
+            try:
+                move(int(rect.left), int(rect.top), int(width), int(height), repaint=True)
+                log.info("窗口尺寸已固定为 %d x %d", width, height)
+            except Exception as exc:  # noqa: BLE001 - 尺寸固定失败时继续用当前外框
+                log.warning("固定窗口尺寸失败: %s", exc)
+    focus = getattr(wrapper, "set_focus", None)
+    if callable(focus):
+        try:
+            focus()
+        except Exception as exc:  # noqa: BLE001 - 前台策略可能拒绝
+            log.warning("激活窗口失败: %s", exc)
+    return client_box(wrapper)
+
+
+def client_box(wrapper: Any) -> tuple[int, int, int, int]:
+    """客户区左上角映射到屏幕坐标后的矩形。
+
+    :param wrapper: 提供 ``client_to_screen`` / ``client_rect``，或至少提供 ``rectangle``。
+    :return: ``(left, top, right, bottom)``。
+    :raises GuiError: 两种矩形都读不到。
+    """
+    try:
+        origin = wrapper.client_to_screen((0, 0))
+        client = wrapper.client_rect()
+        width = client.width() if callable(getattr(client, "width", None)) else int(client.right - client.left)
+        height = client.height() if callable(getattr(client, "height", None)) else int(client.bottom - client.top)
+        left, top = int(origin[0]), int(origin[1])
+        return left, top, left + int(width), top + int(height)
+    except Exception as exc:  # noqa: BLE001 - 退回窗口外框
+        log.debug("读取客户区失败，改用窗口外框: %s", exc)
+    try:
+        rect = _bounds(wrapper)
+        return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
+    except Exception as exc:  # noqa: BLE001
+        raise GuiError(f"读取窗口位置失败: {exc}") from exc
+
+
 def _pywinauto() -> Any:
     try:
         import pywinauto  # type: ignore[import-not-found]
@@ -65,6 +135,21 @@ class AppWindow:
         except Exception as exc:  # noqa: BLE001
             raise ElementNotFoundError(f"找不到控件 auto_id={auto_id}: {exc}") from exc
         return ctrl
+
+    def prepare(self, *, size: tuple[int, int] | None = None) -> tuple[int, int, int, int]:
+        """连接之后：恢复最小化、可选固定尺寸、置前，并返回客户区屏幕矩形。
+
+        :param size: 要固定的外框宽高。空则不改尺寸。
+        :return: 客户区 ``(left, top, right, bottom)``。
+        :raises WindowNotFoundError: 尚未连接。
+        """
+        if self.win is None:
+            raise WindowNotFoundError("窗口尚未连接")
+        target = self.win
+        wrapper = getattr(target, "wrapper_object", None)
+        if callable(wrapper):
+            target = wrapper()
+        return normalize_window(target, size=size)
 
     def click(self, auto_id: str) -> None:
         try:

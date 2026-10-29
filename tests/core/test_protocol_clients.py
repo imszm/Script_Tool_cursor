@@ -257,6 +257,24 @@ def test_heartbeat_thread_start_pause_stop() -> None:
 
 
 # ---------------------------------------------------------------- DLL loader
+def test_dll_close_is_idempotent(tmp_path: Path) -> None:
+    freed: list[int] = []
+
+    class _Lib:
+        _handle: int | None = 7
+
+        @staticmethod
+        def _close(handle: int) -> None:
+            freed.append(handle)
+
+    dll = PpxDll.__new__(PpxDll)
+    dll.path = tmp_path / "x.dll"
+    dll.lib = _Lib()
+    dll.close()
+    dll.close()
+    assert freed == [7] and dll.lib is None
+
+
 def test_dll_missing_file(tmp_path: Path) -> None:
     with pytest.raises(DllLoadError, match="不存在"):
         PpxDll(tmp_path / "nope.dll")

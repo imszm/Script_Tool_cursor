@@ -223,9 +223,8 @@ src/ppx_testkit/settings.py 读配置、合并、校验
 src/ppx_testkit/logger.py   每次运行一个日志目录
 src/ppx_testkit/station_schema.py  各应用允许的配置段
 src/ppx_testkit/core/       串口、继电器、关键字、协议、循环、报告、窗口、硬件复位
-src/ppx_testkit/profiles/   l5 / p3 / r3 的 DLL 路径、节点、寄存器、按键枚举
-src/ppx_testkit/apps/       各工位流程。部分文件只重导出 tools
-src/ppx_testkit/tools/      计算器、鼠标坐标、继电器探测、灯板调试、R3 菜单
+src/ppx_testkit/profiles/   l5 / p3 / r3 / w3 的 DLL 路径、节点、寄存器、按键枚举。W3 没有 region DLL
+src/ppx_testkit/apps/       各工位流程，含计算器、鼠标坐标、继电器探测、灯板调试、R3 菜单
 src/ppx_testkit/web/        本机网页运行台
 resources/dll/l5/           L5 的 5 个运行库
 resources/dll/r3/           R3 的 ppx_ble.dll、ppx_region.dll
@@ -256,17 +255,17 @@ logs/                       运行后才出现，不入库
 
 `apps` 按工位种类分目录。同一个应用可以被多份 yaml 复用。例如 `power_cycle.relay_power_on` 同时服务继电器开关机、NFC 开关机和把手开关，差别全在各自的 yaml。
 
-下面这些工位的流程在 `tools/`，`apps/` 里的同名文件只是重导出，改逻辑只改 `tools/`：
+下面这些辅助工具的实现就在 `apps/` 里，用 `@register_tool` 登记，不进压测统计报告。改逻辑只改这一处：
 
-| 工位 | 事实来源 |
+| 工位 | 实现 |
 | --- | --- |
-| `mouse_locate` | `tools/mouse_locate.py` |
-| `speed_calc` | `tools/calculators/speed_calc.py` |
-| `time_diff` | `tools/calculators/time_diff.py` |
-| `relay_probe` | `tools/relay_probe.py` |
-| `lrd_debug` | `tools/lrd_debug.py` |
+| `mouse_locate` | `apps/pctool/mouse_locate.py` |
+| `speed_calc` | `apps/calculators/speed_calc.py` |
+| `time_diff` | `apps/calculators/time_diff.py` |
+| `relay_probe` | `apps/power_cycle/relay_probe.py` |
+| `lrd_debug` | `apps/whitebox/lrd_debug.py` |
 
-`tools/r3_menu.py` 是 R3 电机白盒的交互菜单，没有单独的工位 yaml，由 `r3_mcb_whitebox` 调用。这些工具不进压测统计报告。
+`apps/whitebox/r3_menu.py` 是 R3 电机白盒的交互菜单，没有单独的工位 yaml，由 `r3_mcb_whitebox` 调用。`apps/whitebox/r3_names.py` 只重导出 `profiles/r3.py`。
 
 要在项目根目录执行命令，或者设置环境变量 `PPX_TESTKIT_ROOT` 指向能同时看到 `config/` 和 `pyproject.toml` 的目录。
 
@@ -282,7 +281,7 @@ logs/                       运行后才出现，不入库
 | `nfc_power_cycle` | 同上 | NFC 开关机，异常关键字熔断断电。默认 100000 轮 | `Tool/NFC开关机异常关键字检测.py` |
 | `handle_power_cycle` | 同上 | 把手继电器循环，不读设备日志。默认 200000 轮 | `Tool/把手自动化开关.py` |
 | `w3_power_button` | `power_cycle.power_button` | 电源键开关机，命中停止关键字保留现场。默认 500000 轮 | `Tool/W3继电器开关机压力测试.py` |
-| `relay_probe` | `power_cycle.relay_probe` | 继电器极性人工探测。逻辑在 `tools/relay_probe.py` | `Tool/查看继电器状态.py` |
+| `relay_probe` | `power_cycle.relay_probe` | 继电器极性人工探测 | `Tool/查看继电器状态.py` |
 
 ### 充电、灯光、舵机、电机
 
@@ -309,22 +308,22 @@ logs/                       运行后才出现，不入库
 | `ppx_pctool_stress` | `pctool.ppx_scan_stress` | PPX PCTOOL 车架号与扫码弹窗。默认 100 轮 | 新工位，见下一节 |
 | `r3_assembly_upgrade` | `assembly.r3_assembly_upgrade` | 总装 VIN / 部件 SN 录入与升级确认 | R3 总装升级 |
 | `inspect_controls` | `pctool.inspect_controls` | 导出窗口控件名 | 识别读取应用窗口控件 |
-| `mouse_locate` | `pctool.mouse_locate` | 鼠标坐标采样。逻辑在 `tools/mouse_locate.py` | `Tool/鼠标定位脚本.py` |
+| `mouse_locate` | `pctool.mouse_locate` | 鼠标坐标采样 | `Tool/鼠标定位脚本.py` |
 
 ### 白盒、FCT、计算器
 
 | 工位名 | 应用模块 | 说明 | 旧脚本 |
 | --- | --- | --- | --- |
 | `l5_lcb_ble` | `whitebox.lcb_ble` | 灯板 BLE，Excel/CSV 用例，HTML 报告 | L5 BLE 自动化工具 V1.6 |
-| `lrd_debug` | `whitebox.lrd_debug` | 灯板单次点灯并回读。逻辑在 `tools/lrd_debug.py` | `Tool/LRD调试程序.py` |
+| `lrd_debug` | `whitebox.lrd_debug` | 灯板单次点灯并回读 | `Tool/LRD调试程序.py` |
 | `mcb_whitebox` | `whitebox.mcb_region` | L5 MCB 白盒，region v1，6 项用例 | L5 MCB V1.4.6 |
 | `l5_mcb_hall_diag` | `whitebox.mcb_hall_diag` | MCB 霍尔体检，人工转动车轮 | L5 MCB 霍尔诊断 |
 | `r3_mcb_whitebox` | `whitebox.r3_mcb` | R3 MCB 电机白盒。默认 `interactive` 键盘菜单，也可切全自动或稳定性 | `R3_MCB白盒测试/PPX_MCB_V2.PY` |
 | `p3_fct` | `fct.p3_fcb` | 多通道 SMT/FCT，SN 递增，绿灯状态机 | P3 FCT |
 | `r3_leb_fct` | `fct.r3_leb` | LEB SMT，扫码加屏幕颜色判定 | R3 LEB SMT |
 | `r3_mcb_fct` | `fct.r3_mcb` | MCB SMT，继电器上下电加屏幕颜色判定 | R3 MCB SMT |
-| `speed_calc` | `calculators.speed_calc` | 车速计算。逻辑在 `tools/calculators/speed_calc.py` | `Tool/代步车车速计算器.py` |
-| `time_diff` | `calculators.time_diff` | 时间差。逻辑在 `tools/calculators/time_diff.py` | `Tool/时间差计算.py` |
+| `speed_calc` | `calculators.speed_calc` | 车速计算 | `Tool/代步车车速计算器.py` |
+| `time_diff` | `calculators.time_diff` | 时间差 | `Tool/时间差计算.py` |
 
 ## 9. 容易踩到的默认值
 
@@ -456,14 +455,14 @@ ppx-test run mouse_locate
 | PPX 扫码点击坐标、条码、车架号 | `config/stations/ppx_pctool_stress.yaml` 的 `stress` |
 | 本机程序路径 | `config/local.yaml` 的 `stations.<工位>.stress.program_path` |
 | 日志放哪、控制台打到哪一级 | `config/default.yaml` 的 `logging`，或 `local.yaml` |
-| 换一套测试步骤 | 改对应 `apps/...py` 的 `run`。已经迁到 `tools/` 的，只改 `tools/` 里那一份 |
+| 换一套测试步骤 | 改对应 `apps/...py` 的 `run` |
 
 改完配置先 `ppx-test show <工位>`。配置错误会直接打印原因，不会去动继电器。
 
 新增一个工位时：
 
 1. 在 `config/stations/` 新建 `<工位名>.yaml`。能复用的继电器口、关键字和点击坐标用 `include` 引用 `_fragments/`。
-2. `app:` 指向已有模块，或在 `src/ppx_testkit/apps/<域>/` 实现 `run(settings, ctx) -> int`。辅助工具的流程写在 `tools/`，`apps/` 只做重导出，并用 `@register_tool` 登记，注册名与 `app:` 一致。
+2. `app:` 指向已有模块，或在 `src/ppx_testkit/apps/<域>/` 实现 `run(settings, ctx) -> int`。辅助工具同样写在 `apps/`，用 `@register_tool` 登记，注册名与 `app:` 一致。
 3. 在 `src/ppx_testkit/station_schema.py` 登记该应用的配置段和串口名。
 4. 串口号只写 `config/local.yaml`，或通过 `--port` 传入。
 5. 先 `ppx-test show <工位名>`，再限制轮次试跑。

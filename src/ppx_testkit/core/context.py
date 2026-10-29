@@ -39,6 +39,20 @@ class HardwareContext:
             raise RuntimeError("HardwareContext 已关闭，不能再托管资源")
         return self._stack.enter_context(cm)
 
+    def enter_closable(self, resource: T) -> T:
+        """托管只有 ``close()`` 的对象，退出时调用它。
+
+        适合 ``PpxDll`` 或继电器。``close`` 应幂等。
+
+        :param resource: 带 ``close`` 方法的对象。
+        :return: 原对象。
+        :raises RuntimeError: 上下文已经关闭。
+        """
+        if self._closed:
+            raise RuntimeError("HardwareContext 已关闭，不能再托管资源")
+        self._stack.callback(resource.close)  # type: ignore[attr-defined]
+        return resource
+
     def register_emergency_stop(self, callback: Callable[[], None], name: str = "") -> None:
         """登记安全停机动作。关闭时按注册逆序（LIFO）执行。
 

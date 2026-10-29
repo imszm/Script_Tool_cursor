@@ -33,10 +33,8 @@ from ppx_testkit.apps.whitebox.r3_basic import R3BasicCases
 from ppx_testkit.apps.whitebox.r3_menu import R3MenuCases
 from ppx_testkit.apps.whitebox.r3_names import BRAKE_NAMES, MODE_NAMES, STABILITY_CASES, log
 from ppx_testkit.apps.whitebox.r3_stability import R3StabilityCases
-from ppx_testkit.core.factory import region_client_from_settings
-from ppx_testkit.core.protocol.dll_loader import PpxDll
-from ppx_testkit.core.protocol.ppx_types import DevId, ModeV2, RegV2
-from ppx_testkit.core.protocol.region_client import RegionCodecV2
+from ppx_testkit.core.factory import make_region_codec, open_profile_region
+from ppx_testkit.core.protocol.ppx_types import ModeV2, RegV2
 from ppx_testkit.core.protocol.region_v2_motor import (
     call_reconnect,
     has_reconnect,
@@ -57,6 +55,7 @@ from ppx_testkit.exceptions import (
     ToolError,
 )
 from ppx_testkit.logger import RunContext
+from ppx_testkit.profiles.r3 import R3
 from ppx_testkit.settings import AppSettings
 
 Action = Literal["interactive", "full", "stress", "status", "stop", "start", "ramp"]
@@ -66,7 +65,7 @@ _MOTION_ACTIONS = {"interactive", "full", "stress", "ramp"}
 @dataclass(frozen=True)
 class R3ProtocolConfig:
     dll_path: Path
-    dev_id: int = DevId.MCB
+    dev_id: int = R3.dev_id
     rx_timeout_s: float = 0.3
     retries: int = 2
     retry_delay_s: float = 0.05
@@ -560,10 +559,6 @@ class R3McbTester(R3BasicCases, R3StabilityCases, R3MenuCases):
 CodecFactory = Callable[[Path], Any]
 
 
-def _default_codec(dll_path: Path) -> RegionCodecV2:
-    return RegionCodecV2(PpxDll(dll_path))
-
-
 def write_reports(ctx: RunContext, tester: R3McbTester, *, code: int, action: str) -> None:
     passed = sum(1 for r in tester.results if r["verdict"] == "PASS")
     summary = {
@@ -594,15 +589,20 @@ def run(
 ) -> int:
     proto = settings.section("protocol", R3ProtocolConfig)
     cfg = settings.section("r3_mcb", R3McbConfig)
-    codec = (codec_factory or _default_codec)(proto.dll_path)
+    # DLL 在打开串口之前加载。版本取 R3 profile，工位不直接绑定 v2 编解码器。
+    codec = (
+        codec_factory(proto.dll_path)
+        if codec_factory is not None
+        else make_region_codec(proto.dll_path, R3.version)
+    )
     tester: R3McbTester | None = None
     code = 1
     try:
-        with region_client_from_settings(
+        with open_profile_region(
             settings,
+            R3,
             serial_name="mcb",
             dll=proto.dll_path,
-            version="v2",
             dev_id=proto.dev_id,
             rx_timeout_s=proto.rx_timeout_s,
             retries=proto.retries,

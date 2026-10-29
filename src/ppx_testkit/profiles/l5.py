@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ppx_testkit.core.protocol.ppx_types import DevId
+from ppx_testkit.core.protocol.heartbeat import ShadowReg
+from ppx_testkit.core.protocol.ppx_types import DevId, RegV1
 from ppx_testkit.profiles.base import ProtocolProfile
 
 L5 = ProtocolProfile(
@@ -36,3 +37,18 @@ def ble_dll() -> Path:
     :return: resources/dll/l5/ppx_ble.dll。
     """
     return L5.dll_file("ble")
+
+
+def mcb_shadow_regs() -> list[ShadowReg]:
+    """L5 MCB 测试模式下周期刷新的控制寄存器。
+
+    顺序与旧脚本心跳一致：RUN_MODE（为零则跳过）、RT_SETTING、TARGET_SPEED、DAT_SETTING（为零则跳过）。
+
+    :return: 影子寄存器列表。调用方每次拿到一份新列表。
+    """
+    return [
+        ShadowReg(RegV1.RUN_MODE, "run_mode", skip_when_zero=True),
+        ShadowReg(RegV1.RT_SETTING, "rt_setting"),
+        ShadowReg(RegV1.TARGET_SPEED, "target_speed"),
+        ShadowReg(RegV1.DAT_SETTING, "dat_setting", skip_when_zero=True),
+    ]

@@ -3,9 +3,10 @@
 
 目录以包内分层为准，不要再拆根目录 `core/`、`cases/`、`main.py`，也不要新建 `src/ppx_testkit/stations/`：
 - `src/ppx_testkit/core/`：串口、继电器、GUI、监控、C DLL 协议、报告、Runner。禁止 L5/R3/W3/P3 常量、寄存器地址和专属业务。
-- `src/ppx_testkit/profiles/`：`l5` / `p3` / `r3` 的 DLL 路径、节点 ID、寄存器表、按键/菜单枚举、通道状态机。
+- `src/ppx_testkit/profiles/`：`l5` / `p3` / `r3` / `w3` 的 DLL 路径、节点 ID、寄存器表、按键/菜单枚举、通道状态机。W3 没有 region DLL。
 - `src/ppx_testkit/apps/`：各工站业务流程，按功能域编排。只读配置、组装 core 对象，不直接调用 pyserial / ctypes，不按机型写分支。
-- `src/ppx_testkit/tools/`：`calculators/`、`mouse_locate`、`relay_probe`、`lrd_debug`、`r3_menu`。不接入压测报告。`apps/` 下同名模块只重导出这里，改逻辑只改这一处。
+- 辅助工具（`calculators/`、`mouse_locate`、`relay_probe`、`lrd_debug`、`r3_menu`）放在 `apps/` 对应模块，用 `@register_tool` 登记，不接入压测报告。禁止恢复 `ppx_testkit.tools`，禁止两份业务逻辑。
+- 后续新增功能只扩展 `src/ppx_testkit/apps/` 与 `src/ppx_testkit/profiles/`。机型差异进 profile，工位流程进 apps。不要新建或恢复已废弃的 `tools/` 目录。
 - `src/ppx_testkit/web/` 与 `cli.py`：参数、配置、子进程会话、状态展示。
 - `config/stations/`：工位 yaml。优先 include `config/stations/_fragments/`（`keywords_assertion.yaml`、`relay_ch340.yaml`、`relay_cmd_50_4f.yaml`、`w3_pctool_clicks.yaml`）。变更必须符合 `station_schema.py`。
 - `config/local.yaml`：本机串口和机器路径，不入库。禁止写进代码或 `default.yaml`。

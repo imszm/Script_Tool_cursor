@@ -69,6 +69,31 @@ class TitleWindowProbe:
         log.info("已激活窗口: %s", title)
         return True
 
+    def prepare(self, title: str, *, size: tuple[int, int] | None = None) -> tuple[int, int, int, int] | None:
+        """点击或图像匹配前，把目标窗口恢复、可选固定尺寸并置前。
+
+        :param title: 窗口标题片段。
+        :param size: 外框宽高。空则不改尺寸，避免挪动已经标定的绝对坐标。
+        :return: 客户区屏幕矩形。找不到或无法读取时返回 None，调用方继续用原坐标。
+        """
+        try:
+            elements = self._find(title)
+        except GuiError as exc:
+            log.warning("准备窗口 %s 失败: %s", title, exc)
+            return None
+        if not elements:
+            log.warning("找不到窗口，无法置前: %s", title)
+            return None
+        try:
+            from pywinauto.controls.hwndwrapper import HwndWrapper  # type: ignore[import-not-found]
+
+            from ppx_testkit.core.gui.window import normalize_window
+
+            return normalize_window(HwndWrapper(elements[0].handle), size=size)
+        except Exception as exc:  # noqa: BLE001 - 置前失败不中断后续绝对坐标点击
+            log.warning("准备窗口 %s 失败: %s", title, exc)
+            return None
+
     def titles(self, *, limit: int = 15) -> list[str]:
         """列出当前可见顶层窗口标题，供失败日志对照屏幕上实际开着什么。
 

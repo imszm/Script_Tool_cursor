@@ -340,6 +340,26 @@ def point_to_roi(point: Point, x_radius: int, y_radius: int) -> tuple[int, int, 
     return x - x_radius, y - y_radius, x + x_radius, y + y_radius
 
 
+def client_to_screen(origin: Point, relative: Point) -> Point:
+    """把窗口客户区左上角为原点的坐标换成屏幕绝对坐标。
+
+    :param origin: 客户区左上角的屏幕坐标。
+    :param relative: 相对客户区左上角的偏移。
+    :return: 屏幕坐标。
+    """
+    return origin[0] + relative[0], origin[1] + relative[1]
+
+
+def screen_to_client(origin: Point, absolute: Point) -> Point:
+    """把屏幕绝对坐标换成相对客户区左上角的偏移。
+
+    :param origin: 客户区左上角的屏幕坐标。
+    :param absolute: 屏幕坐标。
+    :return: 客户区相对坐标。
+    """
+    return absolute[0] - origin[0], absolute[1] - origin[1]
+
+
 def clip_roi(roi: tuple[int, int, int, int], width: int, height: int) -> tuple[int, int, int, int]:
     x1, y1, x2, y2 = roi
     return max(0, x1), max(0, y1), min(width, x2), min(height, y2)
@@ -364,6 +384,8 @@ class Screen:
         self.pg.FAILSAFE = failsafe
         if pause_s is not None:
             self.pg.PAUSE = pause_s
+        # 图像匹配前可选地恢复并置前目标窗口。未绑定时点击行为不变。
+        self.prepare_visual: Callable[[], None] | None = None
 
     # ------------------------------------------------------------ 鼠标键盘
     def click(self, point: Point, *, label: str = "") -> None:
@@ -501,9 +523,39 @@ class Screen:
             time.sleep(poll_s)
         raise ElementNotFoundError(f"{timeout_s:.0f}s 内未找到 {what}")
 
-    def wait_image(self, image: Path, timeout_s: float, *, confidence: float = 0.8, poll_s: float = 0.5) -> Any:
-        return self._poll(timeout_s, poll_s, lambda: self.pg.locateOnScreen(str(image), confidence=confidence),
-                          f"图像 {image.name}")
+    def _ready_for_visual(self) -> None:
+        """图像查找前恢复并激活窗口。未设置 ``prepare_visual`` 时什么都不做。"""
+        if self.prepare_visual is not None:
+            self.prepare_visual()
+
+    def wait_image(
+        self,
+        image: Path,
+        timeout_s: float,
+        *,
+        confidence: float = 0.8,
+        poll_s: float = 0.5,
+        region: tuple[int, int, int, int] | None = None,
+    ) -> Any:
+        """在屏幕或指定区域内等待特征图。
+
+        :param image: 特征图路径。
+        :param timeout_s: 最长等待秒数。
+        :param confidence: 匹配置信度。
+        :param poll_s: 轮询间隔。
+        :param region: ``(left, top, width, height)``。空则全屏，与原来一致。
+        :return: pyautogui 定位结果。
+        """
+        self._ready_for_visual()
+        kwargs: dict[str, Any] = {"confidence": confidence}
+        if region is not None:
+            kwargs["region"] = region
+        return self._poll(
+            timeout_s,
+            poll_s,
+            lambda: self.pg.locateOnScreen(str(image), **kwargs),
+            f"图像 {image.name}",
+        )
 
     def click_image(
         self,
@@ -513,10 +565,23 @@ class Screen:
         offset: Point = (0, 0),
         confidence: float = 0.8,
         poll_s: float = 0.5,
+        region: tuple[int, int, int, int] | None = None,
     ) -> Point:
-        center = self._poll(timeout_s, poll_s,
-                            lambda: self.pg.locateCenterOnScreen(str(image), confidence=confidence),
-                            f"图像 {image.name}")
+        """匹配特征图并点击。匹配前若绑定了 ``prepare_visual``，先恢复并置前窗口。
+
+        :param region: 限定搜索范围。空则全屏。
+        :return: 实际点击的屏幕坐标。
+        """
+        self._ready_for_visual()
+        kwargs: dict[str, Any] = {"confidence": confidence}
+        if region is not None:
+            kwargs["region"] = region
+        center = self._poll(
+            timeout_s,
+            poll_s,
+            lambda: self.pg.locateCenterOnScreen(str(image), **kwargs),
+            f"图像 {image.name}",
+        )
         target = (int(center.x + offset[0]), int(center.y + offset[1]))
         self.click(target, label=image.stem)
         return target

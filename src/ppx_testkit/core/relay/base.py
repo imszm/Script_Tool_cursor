@@ -41,10 +41,14 @@ class RelayConfig:
     drain_response: bool = True
     open_per_command: bool = False
     send_retries: int = 1
+    recover_base_delay_s: float = 0.2
+    recover_max_delay_s: float = 2.0
 
     def __post_init__(self) -> None:
         if self.repeat < 1 or self.send_retries < 1:
             raise ConfigError("relay.repeat / relay.send_retries 至少为 1")
+        if self.recover_base_delay_s < 0 or self.recover_max_delay_s < 0:
+            raise ConfigError("relay.recover_base_delay_s / recover_max_delay_s 不能为负数")
         if self.type == "command" and not self.channels and not self.commands:
             raise ConfigError("command 型继电器必须配置 channels 或 commands")
         for ch, cmds in self.channels.items():
@@ -100,6 +104,13 @@ class RelayDriver(abc.ABC):
                 log.warning("继电器指令 %s 发送失败 (第 %d/%d 次): %s", label, attempt, self.cfg.send_retries, exc)
                 self.transport.close()
                 opened_here = False
+                if attempt < self.cfg.send_retries:
+                    delay = min(
+                        self.cfg.recover_max_delay_s,
+                        self.cfg.recover_base_delay_s * (2 ** (attempt - 1)),
+                    )
+                    if delay > 0:
+                        self._sleep(delay)
             finally:
                 if opened_here and self.cfg.open_per_command:
                     self.transport.close()

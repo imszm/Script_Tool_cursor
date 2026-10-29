@@ -13,6 +13,7 @@ import time
 from typing import Protocol
 
 from ppx_testkit.core.gui.screen import is_failsafe
+from ppx_testkit.core.report.writers import append_jsonl
 from ppx_testkit.core.runner.result import CycleResult, RunSummary
 from ppx_testkit.exceptions import TestAbort, ToolError
 from ppx_testkit.logger import current_context
@@ -88,6 +89,8 @@ class StressRunner:
                     consecutive_failures += 1
                     log.error("第 %d 轮 FAIL: %s | 累计通过率 %.2f%% (%d/%d)",
                               i, result.detail, s.pass_rate, s.passed, s.executed)
+                self._checkpoint(result)
+                if not result.passed:
                     if self.stop_on_fail:
                         raise TestAbort(f"第 {i} 轮失败: {result.detail}", keep_power=self.fail_keeps_power)
                     if self.max_consecutive_failures and consecutive_failures >= self.max_consecutive_failures:
@@ -128,3 +131,25 @@ class StressRunner:
             if ctx is not None:
                 ctx.write_json("summary.json", s.to_dict())
         return s
+
+    def _checkpoint(self, result: CycleResult) -> None:
+        """一轮结束后立刻把该轮和当前汇总写盘。没有运行目录时跳过。
+
+        :param result: 刚结束的一轮。失败只记日志，不改变这一轮的通过/失败。
+        """
+        ctx = current_context()
+        if ctx is None:
+            return
+        path = ctx.artifact("cycles.jsonl")
+        if path is not None:
+            append_jsonl(path, {
+                "index": result.index,
+                "passed": result.passed,
+                "detail": result.detail,
+                "duration_s": round(result.duration_s, 3),
+                "data": result.data,
+                "executed": self.summary.executed,
+                "passed_total": self.summary.passed,
+                "failed_total": self.summary.failed,
+            })
+        ctx.write_json("summary.json", self.summary.to_dict())

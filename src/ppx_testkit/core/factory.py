@@ -16,7 +16,7 @@ import contextlib
 import importlib
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from ppx_testkit.core.monitor.keyword_rules import KeywordConfig, KeywordEvaluator
 from ppx_testkit.core.monitor.line_reader import DeviceLogMonitor
@@ -27,9 +27,8 @@ from ppx_testkit.core.relay.base import RelayConfig, RelayDriver, build_relay
 from ppx_testkit.core.relay.drivers import ServoDriver
 from ppx_testkit.core.serial.port_finder import PortFinder
 from ppx_testkit.core.serial.transport import SerialEndpoint, SerialFactory, SerialTransport, open_endpoint
+from ppx_testkit.profiles.base import ProtocolProfile, ProtocolVersion
 from ppx_testkit.settings import AppSettings
-
-ProtocolVersion = Literal["v1", "v2"]
 
 
 def endpoint(settings: AppSettings, name: str) -> SerialEndpoint:
@@ -197,7 +196,12 @@ def build_region_client(
 
 
 def make_region_codec(dll: Path, version: ProtocolVersion) -> RegionCodecV1 | RegionCodecV2:
-    """按协议版本加载 region DLL。v1 为 L5，v2 为 R3，两者不能混用。"""
+    """按协议版本加载 region DLL。版本来自机型 profile，v1 与 v2 不能混用。
+
+    :param dll: region DLL 路径。
+    :param version: ``v1`` 或 ``v2``。
+    :return: 对应的编解码器。
+    """
     loaded = PpxDll(dll)
     if version == "v1":
         return RegionCodecV1(loaded)
@@ -225,8 +229,9 @@ def region_client_from_settings(
     """
     active = codec if codec is not None else make_region_codec(dll, version)
     transport = open_serial(settings, serial_name, factory=serial_factory, exclude=exclude)
+    client: RegionClient | None = None
     try:
-        yield build_region_client(
+        client = build_region_client(
             active,
             transport,
             dev_id=dev_id,
@@ -235,8 +240,60 @@ def region_client_from_settings(
             retry_delay_s=retry_delay_s,
             name=serial_name,
         )
+        yield client
     finally:
         transport.close()
+        if client is not None:
+            client.close()
+
+
+@contextlib.contextmanager
+def open_profile_region(
+    settings: AppSettings,
+    profile: ProtocolProfile,
+    *,
+    serial_name: str,
+    dll: Path | None = None,
+    dev_id: int | None = None,
+    rx_timeout_s: float | None = None,
+    retries: int | None = None,
+    retry_delay_s: float | None = None,
+    codec: Any | None = None,
+    serial_factory: SerialFactory | None = None,
+    exclude: Iterable[str] = (),
+) -> Iterator[RegionClient]:
+    """按机型 profile 打开 region 会话。工位不写 v1/v2。
+
+    显式传入的节点、超时和重试覆盖 profile 默认值。``codec`` 非空时不再加载 DLL。
+    退出时关闭串口。
+
+    :param settings: 已合并的工位配置。
+    :param profile: 带 ``version`` 和默认节点的机型，例如 L5、R3。
+    :param serial_name: ``serial.<name>`` 端点名。
+    :param dll: region DLL。省略时用 profile 的默认文件。
+    :param dev_id: 设备节点。省略时用 profile.dev_id。
+    :param rx_timeout_s: 接收超时（秒）。省略时用 profile。
+    :param retries: 收发重试次数。省略时用 profile。
+    :param retry_delay_s: 重试间隔（秒）。省略时用 profile。
+    :param codec: 已构造的编解码器。省略时按 profile.version 加载 DLL。
+    :param serial_factory: 串口工厂，单测注入。
+    :param exclude: 打开串口时排除的端口。
+    :return: 迭代一次的 RegionClient。
+    """
+    with region_client_from_settings(
+        settings,
+        serial_name=serial_name,
+        dll=profile.dll_file("region") if dll is None else dll,
+        version=profile.version,
+        dev_id=profile.dev_id if dev_id is None else dev_id,
+        rx_timeout_s=profile.rx_timeout_s if rx_timeout_s is None else rx_timeout_s,
+        retries=profile.retries if retries is None else retries,
+        retry_delay_s=profile.retry_delay_s if retry_delay_s is None else retry_delay_s,
+        codec=codec,
+        serial_factory=serial_factory,
+        exclude=exclude,
+    ) as client:
+        yield client
 
 
 @contextlib.contextmanager
@@ -254,10 +311,14 @@ def ble_client_from_settings(
 
     codec = BleCodecV1(PpxDll(dll))
     transport = open_serial(settings, serial_name, factory=serial_factory)
+    client: Any = None
     try:
-        yield BleClient(codec, transport, dev_id=dev_id, rx_timeout_s=rx_timeout_s)
+        client = BleClient(codec, transport, dev_id=dev_id, rx_timeout_s=rx_timeout_s)
+        yield client
     finally:
         transport.close()
+        if client is not None:
+            client.close()
 
 
 def resolve_runner(app: str) -> Callable[..., Any] | None:

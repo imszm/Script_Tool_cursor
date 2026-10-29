@@ -9,13 +9,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from ppx_testkit.core.factory import region_client_from_settings
+from ppx_testkit.core.factory import open_profile_region
 from ppx_testkit.core.protocol.heartbeat import ShadowReg
-from ppx_testkit.core.protocol.ppx_types import DevId, Msg, RegV1
+from ppx_testkit.core.protocol.ppx_types import Msg
 from ppx_testkit.core.protocol.region_client import RegionClient
 from ppx_testkit.core.report.writers import write_detail_reports
 from ppx_testkit.exceptions import ConfigError
 from ppx_testkit.logger import RunContext
+from ppx_testkit.profiles.l5 import L5
+from ppx_testkit.profiles.l5 import mcb_shadow_regs as _l5_shadow_regs
 from ppx_testkit.settings import AppSettings
 
 log = logging.getLogger(__name__)
@@ -26,22 +28,20 @@ SKIP = "SKIP"
 
 
 def _default_region_dll() -> Path:
-    """L5 region DLL。路径定义在 profiles.l5，这里只取默认文件。"""
-    from ppx_testkit.profiles.l5 import region_dll
-
-    return region_dll()
+    """L5 region DLL。路径和协议版本定义在 profiles.l5。"""
+    return L5.dll_file("region")
 
 
 @dataclass(frozen=True)
 class McbLinkConfig:
-    """MCB 通信链路（``link`` 段）。"""
+    """MCB 通信链路（``link`` 段）。节点和超时默认取 L5 profile。"""
 
     dll: Path = field(default_factory=_default_region_dll)
     serial: str = "mcb"  # 对应 serial.<name> 端点
-    dev_id: int = DevId.MCB
-    rx_timeout_s: float = 0.3
-    retries: int = 3
-    retry_delay_s: float = 0.1
+    dev_id: int = L5.dev_id
+    rx_timeout_s: float = L5.rx_timeout_s
+    retries: int = L5.retries
+    retry_delay_s: float = L5.retry_delay_s
 
     def __post_init__(self) -> None:
         if not self.serial:
@@ -77,15 +77,15 @@ Connector = Callable[[AppSettings, McbLinkConfig], contextlib.AbstractContextMan
 
 @contextlib.contextmanager
 def open_region_client(settings: AppSettings, link: McbLinkConfig) -> Iterator[RegionClient]:
-    """加载 L5 region DLL 并打开 MCB 串口；退出时保证关闭串口。
+    """按 L5 profile 加载 region DLL 并打开 MCB 串口；退出时保证关闭串口。
 
-    先加载 DLL 再打开串口：DLL 缺失时不会占用端口。
+    先加载 DLL 再打开串口：DLL 缺失时不会占用端口。协议版本取自 L5，不在这里写 v1。
     """
-    with region_client_from_settings(
+    with open_profile_region(
         settings,
+        L5,
         serial_name=link.serial,
         dll=link.dll,
-        version="v1",
         dev_id=link.dev_id,
         rx_timeout_s=link.rx_timeout_s,
         retries=link.retries,
@@ -95,13 +95,11 @@ def open_region_client(settings: AppSettings, link: McbLinkConfig) -> Iterator[R
 
 
 def mcb_shadow_regs() -> list[ShadowReg]:
-    """L5 MCB 测试模式下需周期刷新的控制寄存器（顺序与旧脚本心跳一致）。"""
-    return [
-        ShadowReg(RegV1.RUN_MODE, "run_mode", skip_when_zero=True),
-        ShadowReg(RegV1.RT_SETTING, "rt_setting"),
-        ShadowReg(RegV1.TARGET_SPEED, "target_speed"),
-        ShadowReg(RegV1.DAT_SETTING, "dat_setting", skip_when_zero=True),
-    ]
+    """返回 L5 心跳寄存器表。顺序定义在 profiles.l5。
+
+    :return: 影子寄存器列表。
+    """
+    return _l5_shadow_regs()
 
 
 def write_raw(
