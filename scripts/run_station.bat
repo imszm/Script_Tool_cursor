@@ -15,6 +15,8 @@ cd /d "%~dp0.."
 set "PY=.venv\Scripts\python.exe"
 if not exist "%PY%" (
     echo [ERROR] .venv not found. Run scripts\setup_env.bat first.
+    echo If that script failed, install Python 3.11 or newer and run it again.
+    echo Do not copy a .venv folder from another computer.
     goto :end
 )
 
