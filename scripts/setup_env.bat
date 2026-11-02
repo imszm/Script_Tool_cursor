@@ -85,10 +85,15 @@ pause
 endlocal & exit /b %RC%
 
 :resolve_python
-rem py -3 is the newest Python 3. A machine with only 3.12+ has no "3.11" tag.
+rem py -3 follows the starred default. A PC can have 3.11 installed and still
+rem answer py -3 / python with 3.8, so probe each installed tag first.
 set "PY="
 where py >nul 2>&1
 if errorlevel 1 goto :resolve_python_exe
+for %%V in (3.16 3.15 3.14 3.13 3.12 3.11) do (
+    if not defined PY call :try_py %%V
+)
+if defined PY exit /b 0
 py -3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1
 if errorlevel 1 goto :resolve_python_exe
 set "PY=py -3"
@@ -100,4 +105,9 @@ if errorlevel 1 exit /b 1
 python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1
 if errorlevel 1 exit /b 1
 set "PY=python"
+exit /b 0
+
+:try_py
+py -%1 -c "import sys" >nul 2>&1 || exit /b 0
+set "PY=py -%1"
 exit /b 0
