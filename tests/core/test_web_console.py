@@ -1,9 +1,13 @@
-"""网页运行台：不接硬件，检查工位表单、命令参数和单次运行锁。"""
+"""网页运行台：不接硬件，检查工位表单、命令参数、单次运行锁和停止宽限。"""
 
 from __future__ import annotations
 
+import subprocess
 import sys
+import threading
 import time
+from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -103,6 +107,106 @@ def test_only_one_run_and_stop() -> None:
 
 
 def _unused_log():
-    from pathlib import Path
-
     return Path("logs") / "web_console_test"
+
+
+class _FakeProc:
+    """假子进程：收到中断后按需在 exit_delay_s 秒后以 130 退出，否则一直不退。"""
+
+    def __init__(self, *, exits_on_interrupt: bool, exit_delay_s: float = 0.0) -> None:
+        self.pid = 4242
+        self.stdout = None
+        self.returncode: int | None = None
+        self.interrupts = 0
+        self.terminated = False
+        self._exits_on_interrupt = exits_on_interrupt
+        self._exit_delay_s = exit_delay_s
+        self._done = threading.Event()
+
+    def interrupt(self) -> None:
+        """记一次停止信号；会退出的进程稍后以 130 结束。"""
+        self.interrupts += 1
+        if self._exits_on_interrupt:
+            threading.Timer(self._exit_delay_s, self._finish, args=(130,)).start()
+
+    def _finish(self, code: int) -> None:
+        """记下退出码并唤醒 wait。
+
+        :param code: 退出码。
+        """
+        if self.returncode is None:
+            self.returncode = code
+        self._done.set()
+
+    def poll(self) -> int | None:
+        """返回退出码；还在运行时为 None。"""
+        return self.returncode
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        """等待退出，超时抛 TimeoutExpired。
+
+        :param timeout: 最长等待秒数。
+        :return: 退出码。
+        """
+        if not self._done.wait(timeout):
+            raise subprocess.TimeoutExpired("fake", timeout or 0)
+        return self.returncode
+
+    def terminate(self) -> None:
+        """强制结束，退出码与 Windows TerminateProcess 一致为 1。"""
+        self.terminated = True
+        self._finish(1)
+
+    def kill(self) -> None:
+        """强杀。"""
+        self._finish(1)
+
+
+def _fake_session(proc: _FakeProc) -> RunSession:
+    """返回只会启动 ``proc`` 的会话，中断直接调到假进程上。
+
+    :param proc: 假子进程。
+    :return: 会话。
+    """
+    def _popen(*_args: Any, **_kwargs: Any) -> Any:
+        return proc
+
+    return RunSession(popen=_popen, interrupt=lambda p: p.interrupt())  # type: ignore[attr-defined]
+
+
+def test_stop_forces_when_station_ignores_interrupt(tmp_path: Path) -> None:
+    proc = _FakeProc(exits_on_interrupt=False)
+    session = _fake_session(proc)
+    session.start("demo", ["python"], tmp_path)
+    session.stop(grace_s=0.05)
+    snap = session.snapshot()
+    assert proc.interrupts == 1 and proc.terminated
+    assert snap["forced"] is True and snap["stop_requested"] is True
+    assert snap["running"] is False and snap["exit_code"] == 1
+
+
+def test_concurrent_stop_sends_one_interrupt(tmp_path: Path) -> None:
+    proc = _FakeProc(exits_on_interrupt=True, exit_delay_s=0.2)
+    session = _fake_session(proc)
+    session.start("demo", ["python"], tmp_path)
+    threads = [threading.Thread(target=session.stop, kwargs={"grace_s": 3}) for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+    snap = session.snapshot()
+    assert proc.interrupts == 1 and not proc.terminated
+    assert snap["forced"] is False and snap["exit_code"] == 130
+
+
+def test_new_run_clears_stop_flags(tmp_path: Path) -> None:
+    first = _FakeProc(exits_on_interrupt=False)
+    session = _fake_session(first)
+    session.start("demo", ["python"], tmp_path)
+    session.stop(grace_s=0.01)
+    second = _FakeProc(exits_on_interrupt=True)
+    session._popen = lambda *_a, **_k: second  # type: ignore[method-assign]
+    session.start("demo", ["python"], tmp_path)
+    snap = session.snapshot()
+    assert snap["stop_requested"] is False and snap["forced"] is False and snap["running"] is True
+    session.stop(grace_s=1)

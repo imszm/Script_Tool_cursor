@@ -61,7 +61,25 @@ def _build_parser() -> argparse.ArgumentParser:
     ui = sub.add_parser("ui", help="打开本机网页运行台")
     ui.add_argument("--port", type=int, default=8765, help="本机网页端口，默认 8765")
     ui.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+    ui.add_argument("--stop-grace", type=_positive_seconds, default=None, metavar="SECONDS",
+                    help="点「停止」后等待工位收尾的秒数，超时才强制结束，默认 20")
     return p
+
+
+def _positive_seconds(text: str) -> float:
+    """解析 ``--stop-grace``：必须是大于 0 的秒数。
+
+    :param text: 命令行原文。
+    :return: 秒数。
+    :raises argparse.ArgumentTypeError: 不是数字或不大于 0。
+    """
+    try:
+        value = float(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"应为秒数，实际 {text!r}") from exc
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"必须大于 0，实际 {value:g}")
+    return value
 
 
 def _add_station_args(p: argparse.ArgumentParser) -> None:
@@ -122,13 +140,24 @@ def _bind_stop_as_interrupt() -> dict[int, Any]:
     Windows 上网页停止发的是 Ctrl+Break（SIGBREAK），不能对子进程组发 Ctrl+C。
     子线程里登记信号会抛 ValueError，这里直接跳过。
 
+    第 1 次信号抛 KeyboardInterrupt；第 2 次只记警告，避免连按打断正在进行的收尾复位；
+    第 3 次起再抛 KeyboardInterrupt，给现场留一个强制退出的办法。
+
     :return: 登记前的处理函数，供结束后恢复，避免污染同进程里的测试。
     """
     previous: dict[int, Any] = {}
     if threading.current_thread() is not threading.main_thread():
         return previous
+    hits = 0
 
     def _raise_interrupt(_signum: int, _frame: object) -> None:
+        nonlocal hits
+        hits += 1
+        if hits == 2:
+            logging.getLogger("ppx_testkit.cli").warning(
+                "正在收尾并复位硬件，已忽略这次停止；再发一次将强制中断，可能留下带电状态"
+            )
+            return
         raise KeyboardInterrupt
 
     sigs = [signal.SIGINT, signal.SIGTERM]
@@ -209,7 +238,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "ui":
             from ppx_testkit.web.server import serve
 
-            return serve(args.port, open_browser=not args.no_browser)
+            return serve(args.port, open_browser=not args.no_browser, stop_grace_s=args.stop_grace)
         return cmd_run(args)
     except ConfigError as exc:
         print(f"配置错误: {exc}", file=sys.stderr)

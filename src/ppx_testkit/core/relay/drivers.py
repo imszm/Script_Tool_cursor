@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from ppx_testkit.core.relay.base import RelayDriver
 from ppx_testkit.exceptions import ConfigError, HardwareError, RelayError
 from ppx_testkit.settings import parse_bytes
+from ppx_testkit.utils.timing import responsive_sleep
 
 if TYPE_CHECKING:
     from ppx_testkit.core.serial.transport import SerialTransport
@@ -71,7 +71,7 @@ class ServoDriver:
         retries: int = 2,
         retry_delay_s: float = 0.5,
         open_per_command: bool = True,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = responsive_sleep,
     ) -> None:
         self.transport = transport
         self.servo_id = servo_id

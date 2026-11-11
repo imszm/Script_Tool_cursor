@@ -34,6 +34,7 @@ from ppx_testkit.exceptions import ConfigError, HardwareError, ProtocolError, Se
 from ppx_testkit.logger import RunContext, get_logger
 from ppx_testkit.settings import AppSettings
 from ppx_testkit.utils.paths import resources_dir
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = get_logger(__name__)
 
@@ -227,7 +228,7 @@ def run_cases(
     cases: Sequence[Mapping[str, Any]],
     out: list[dict[str, Any]],
     *,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = responsive_sleep,
 ) -> str | None:
     """执行全部用例，结果逐条追加到 ``out``（中断时可保留已完成部分）。
 
@@ -269,7 +270,7 @@ def loop_case(
     count: int,
     delay_s: float,
     *,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = responsive_sleep,
 ) -> LoopStats:
     """压力循环：重复下发同一组 LED 设置，以应答是否成功计数。"""
     stats = LoopStats()

@@ -26,6 +26,7 @@ from ppx_testkit.exceptions import (
     SerialOpenError,
     SerialTimeoutError,
 )
+from ppx_testkit.utils.timing import responsive_sleep
 
 R = TypeVar("R")
 
@@ -88,7 +89,7 @@ class SerialTransport:
         log_traffic: bool = True,
         rx_buffer_sizes: Iterable[int] = (),
         factory: SerialFactory | None = None,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = responsive_sleep,
         recover_attempts: int = 0,
         recover_base_delay_s: float = 0.2,
         recover_max_delay_s: float = 2.0,

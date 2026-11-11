@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import signal
 import sys
 import textwrap
 import types
@@ -266,6 +267,27 @@ def fake_app(monkeypatch: pytest.MonkeyPatch):
 def test_cli_run_exit_codes(project_tmp: Path, fake_app, behaviour: str, code: int) -> None:
     _station(project_tmp, "demo", f"app: _fake_app\nbehaviour: {behaviour}\nlogging: {{root_dir: {project_tmp}/logs}}\n")
     assert cli.main(["run", "demo", "--no-local"]) == code
+
+
+def test_second_stop_signal_does_not_interrupt_teardown() -> None:
+    previous = cli._bind_stop_as_interrupt()
+    try:
+        handler = signal.getsignal(signal.SIGINT)
+        assert callable(handler)
+        with pytest.raises(KeyboardInterrupt):
+            handler(signal.SIGINT, None)
+        handler(signal.SIGINT, None)
+        with pytest.raises(KeyboardInterrupt):
+            handler(signal.SIGINT, None)
+    finally:
+        cli._restore_stop_signals(previous)
+
+
+def test_ui_stop_grace_must_be_positive(capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli._positive_seconds("2.5") == 2.5
+    with pytest.raises(SystemExit):
+        cli._build_parser().parse_args(["ui", "--stop-grace", "0"])
+    assert "必须大于 0" in capsys.readouterr().err
 
 
 def test_cli_run_writes_config_and_applies_overrides(project_tmp: Path, fake_app) -> None:

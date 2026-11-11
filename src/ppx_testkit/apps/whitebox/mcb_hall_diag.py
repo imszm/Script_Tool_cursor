@@ -30,7 +30,7 @@ from ppx_testkit.core.protocol.ppx_types import RegV1
 from ppx_testkit.exceptions import ConfigError
 from ppx_testkit.logger import RunContext, get_logger
 from ppx_testkit.settings import AppSettings
-from ppx_testkit.utils.timing import Deadline
+from ppx_testkit.utils.timing import Deadline, responsive_sleep
 
 log = get_logger(__name__)
 
@@ -82,7 +82,7 @@ def diagnose_hall(
     cfg: HallDiagConfig,
     *,
     clock: Callable[[], float] = time.monotonic,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = responsive_sleep,
 ) -> HallDiagResult:
     raw_volt = client.try_read_field(RegV1.BUS_VOLTAGE, "bus_voltage", label="读母线电压")
     # 与旧脚本一致：读数为 0 同样视为供电/通信异常

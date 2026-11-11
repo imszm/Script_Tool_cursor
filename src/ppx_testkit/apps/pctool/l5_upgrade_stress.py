@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import logging
 import random
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
@@ -38,6 +37,7 @@ from ppx_testkit.core.runner import CycleResult, RunSummary, StressRunner
 from ppx_testkit.exceptions import ConfigError, GuiError, HardwareError, TestAbort
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def render_text(template: str, *, sn: str, index: int) -> str:
 class StepStressCycle:
     def __init__(self, cfg: StepStressConfig, *, window: ToolWindow | None = None, relay: Relay | None = None,
                  transport: Any = None, ctx: RunContext | None = None,
-                 sleep: Callable[[float], None] = time.sleep, rng: random.Random | None = None) -> None:
+                 sleep: Callable[[float], None] = responsive_sleep, rng: random.Random | None = None) -> None:
         cfg.validate_resources(has_window=window is not None, has_relay=relay is not None)
         self.cfg = cfg
         self.window = window

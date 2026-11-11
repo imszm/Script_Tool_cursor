@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
@@ -37,6 +36,7 @@ from ppx_testkit.core.runner import CycleResult, RunSummary, StressRunner
 from ppx_testkit.exceptions import ConfigError, HardwareError, TestAbort
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ def outcome_detail(outcome: Outcome, verdict: ColorVerdict | None, max_wait_poll
 class R3McbFctCycle:
     def __init__(self, cfg: McbFctConfig, screen: ColorScreen, relay: PowerRelay | None, *,
                  transport: Any = None, ctx: RunContext | None = None,
-                 sleep: Callable[[float], None] = time.sleep) -> None:
+                 sleep: Callable[[float], None] = responsive_sleep) -> None:
         self.cfg = cfg
         self.screen = screen
         self.relay = relay

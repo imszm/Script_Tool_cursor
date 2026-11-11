@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -18,6 +17,7 @@ from ppx_testkit.core.report.writers import write_csv
 from ppx_testkit.exceptions import ConfigError
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = logging.getLogger("ppx_testkit.apps.pctool.mouse_locate")
 
@@ -49,7 +49,7 @@ class ScreenPosition:
         return self._screen.mouse_position()
 
 
-def locate_loop(source: PositionSource, cfg: LocateConfig, *, sleep: Callable[[float], None] = time.sleep,
+def locate_loop(source: PositionSource, cfg: LocateConfig, *, sleep: Callable[[float], None] = responsive_sleep,
                 now: Callable[[], _dt.datetime] = _dt.datetime.now) -> list[dict[str, Any]]:
     samples: list[dict[str, Any]] = []
     try:

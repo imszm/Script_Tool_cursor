@@ -7,7 +7,6 @@ ppx_testkit.core.protocol.region_v2_motor，避免旧日志过滤失效。
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol
@@ -16,6 +15,7 @@ from ppx_testkit.core.protocol.ppx_types import BrakeStateV2, DatSettingV2, DevI
 from ppx_testkit.exceptions import HardwareError, ProtocolError, SerialDisconnectedError
 from ppx_testkit.logger import get_logger
 from ppx_testkit.profiles.base import ProtocolProfile
+from ppx_testkit.utils.timing import responsive_sleep
 
 R3 = ProtocolProfile(
     model="r3",
@@ -162,7 +162,7 @@ class MotorLink:
         retries: int = 3,
         retry_delay_s: float = 0.1,
         reconnect_delay_s: float = 0.5,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = responsive_sleep,
     ) -> None:
         self.client = client
         self.label = label

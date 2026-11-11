@@ -57,6 +57,7 @@ from ppx_testkit.exceptions import (
 from ppx_testkit.logger import RunContext
 from ppx_testkit.profiles.r3 import R3
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 Action = Literal["interactive", "full", "stress", "status", "stop", "start", "ramp"]
 _MOTION_ACTIONS = {"interactive", "full", "stress", "ramp"}
@@ -224,7 +225,7 @@ class R3McbTester(R3BasicCases, R3StabilityCases, R3MenuCases):
         client: RegionClientLike,
         cfg: R3McbConfig,
         *,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = responsive_sleep,
         clock: Callable[[], float] = time.monotonic,
         input_fn: Callable[[str], str] = builtins.input,
         raw_write: Callable[[bytes], Any] | None = None,
@@ -545,7 +546,7 @@ def run(
     *,
     codec_factory: CodecFactory | None = None,
     serial_factory: Any = None,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = responsive_sleep,
     clock: Callable[[], float] = time.monotonic,
     input_fn: Callable[[str], str] = builtins.input,
 ) -> int:

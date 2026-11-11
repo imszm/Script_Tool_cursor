@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import abc
 import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from ppx_testkit.exceptions import ConfigError, HardwareError, RelayError
 from ppx_testkit.settings import parse_bytes
+from ppx_testkit.utils.timing import responsive_sleep
 
 if TYPE_CHECKING:
     from ppx_testkit.core.serial.transport import SerialTransport
@@ -66,7 +66,7 @@ class RelayDriver(abc.ABC):
         transport: SerialTransport,
         cfg: RelayConfig,
         *,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = responsive_sleep,
     ) -> None:
         self.transport = transport
         self.cfg = cfg

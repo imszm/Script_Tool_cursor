@@ -53,6 +53,7 @@ from ppx_testkit.exceptions import ConfigError, TestAbort
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
 from ppx_testkit.utils.sn import serial_sequence
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = logging.getLogger(__name__)
 
@@ -274,7 +275,7 @@ class P3FctRound:
     """实现 StressCycle：一轮 = 扫码 + 四通道并行监控。"""
 
     def __init__(self, cfg: P3FctConfig, screen: FctScreen, detector: GreenDetector, *,
-                 ctx: RunContext | None = None, sleep: Callable[[float], None] = time.sleep,
+                 ctx: RunContext | None = None, sleep: Callable[[float], None] = responsive_sleep,
                  clock: Callable[[], float] = time.monotonic) -> None:
         self.cfg = cfg
         self.screen = screen

@@ -15,7 +15,7 @@ from ppx_testkit.exceptions import ConfigError
 from ppx_testkit.settings import load_settings
 from ppx_testkit.utils.paths import resolve_path
 from ppx_testkit.web.catalog import build_run_args, save_local_ports, station_catalog
-from ppx_testkit.web.session import RunSession
+from ppx_testkit.web.session import DEFAULT_STOP_GRACE_S, RunSession
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +28,21 @@ def _page_path() -> Path:
 class ConsoleServer(ThreadingHTTPServer):
     """把运行会话挂在服务器上，请求处理函数从这里取。"""
 
-    def __init__(self, address: tuple[str, int], session: RunSession) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        session: RunSession,
+        *,
+        stop_grace_s: float = DEFAULT_STOP_GRACE_S,
+    ) -> None:
+        """绑定地址并挂上会话。
+
+        :param address: ``(主机, 端口)``，端口为 0 时由系统分配。
+        :param session: 当前唯一的运行会话。
+        :param stop_grace_s: 点「停止」后等待工位收尾的秒数。
+        """
         self.session = session
+        self.stop_grace_s = stop_grace_s
         super().__init__(address, ConsoleHandler)
 
 
@@ -69,7 +82,7 @@ class ConsoleHandler(BaseHTTPRequestHandler):
                 self._json(200, _start(self.server.session, body))
                 return
             if path == "/api/stop":
-                self.server.session.stop()
+                self.server.session.stop(self.server.stop_grace_s)
                 self._json(200, self.server.session.snapshot())
                 return
             self._json(404, {"error": "没有这个地址"})
@@ -162,17 +175,19 @@ def _known_station(station: str) -> dict[str, Any]:
     raise ConfigError(f"找不到工位 {station}")
 
 
-def serve(port: int = 8765, *, open_browser: bool = True) -> int:
+def serve(port: int = 8765, *, open_browser: bool = True, stop_grace_s: float | None = None) -> int:
     """启动网页并阻塞，直到 Ctrl+C。只绑定 127.0.0.1。
 
     :param port: 本机端口，默认 8765。
     :param open_browser: 为真时用系统浏览器打开页面。
+    :param stop_grace_s: 停止测试时等待工位收尾的秒数；None 用 :data:`DEFAULT_STOP_GRACE_S`。
     :return: 0 表示正常关掉。端口被占用时向 stderr 写原因并返回 2。
     """
     host = "127.0.0.1"
+    grace = DEFAULT_STOP_GRACE_S if stop_grace_s is None else stop_grace_s
     session = RunSession()
     try:
-        httpd = ConsoleServer((host, port), session)
+        httpd = ConsoleServer((host, port), session, stop_grace_s=grace)
     except OSError as exc:
         print(f"无法启动网页运行台: {exc}", file=sys.stderr)
         return 2
@@ -187,6 +202,8 @@ def serve(port: int = 8765, *, open_browser: bool = True) -> int:
         log.info("网页运行台收到中断")
     finally:
         httpd.shutdown()
-        session.stop(grace_s=3)
+        if session.running():
+            log.warning("网页运行台退出，正在停止测试并等待工位收尾（最多 %.0f 秒）", grace)
+        session.stop(grace_s=grace)
         httpd.server_close()
     return 0

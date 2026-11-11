@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +27,7 @@ from ppx_testkit.exceptions import ConfigError, GuiError, TestAbort
 from ppx_testkit.logger import RunContext
 from ppx_testkit.profiles.w3 import W3
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class ProcessControl(Protocol):
 # ============================================================ 流程
 class W3PcToolStressCycle:
     def __init__(self, cfg: W3StressConfig, screen: ClickScreen, probe: WindowProbe, process: ProcessControl, *,
-                 ctx: RunContext | None = None, sleep: Callable[[float], None] = time.sleep) -> None:
+                 ctx: RunContext | None = None, sleep: Callable[[float], None] = responsive_sleep) -> None:
         self.cfg = cfg
         self.screen = screen
         self.probe = probe

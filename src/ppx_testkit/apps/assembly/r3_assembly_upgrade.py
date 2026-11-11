@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +25,7 @@ from ppx_testkit.core.runner import CycleResult, RunSummary, StressRunner
 from ppx_testkit.exceptions import ConfigError, ElementNotFoundError
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ def make_vin(base: str, suffix: int, width: int) -> str:
 
 class R3AssemblyUpgradeCycle:
     def __init__(self, cfg: AssemblyConfig, screen: AssemblyScreen, *, ctx: RunContext | None = None,
-                 sleep: Callable[[float], None] = time.sleep) -> None:
+                 sleep: Callable[[float], None] = responsive_sleep) -> None:
         self.cfg = cfg
         self.screen = screen
         self.ctx = ctx

@@ -48,6 +48,7 @@ from ppx_testkit.core.serial.transport import SerialFactory, SerialTransport
 from ppx_testkit.exceptions import ConfigError, HardwareError
 from ppx_testkit.logger import RunContext, get_logger
 from ppx_testkit.settings import AppSettings, parse_bytes
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = get_logger(__name__)
 
@@ -355,7 +356,7 @@ class LampCycle:
         *,
         open_transport: Callable[[], SerialTransport],
         make_relay: Callable[[SerialTransport], RelayDriver],
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = responsive_sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.profile = profile
@@ -508,7 +509,7 @@ def run_lamp(
     title: str,
     section: str = "lamp",
     serial_factory: SerialFactory | None = None,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = responsive_sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> int:
     cfg = settings.section(section, LampConfig)

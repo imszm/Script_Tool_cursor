@@ -52,6 +52,7 @@ from ppx_testkit.core.serial.transport import SerialFactory
 from ppx_testkit.exceptions import ConfigError, HardwareError, RelayError, SerialPortError, TestAbort
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ class RelayPowerCycle:
         relay: RelayDriver,
         monitor: DeviceLogMonitor | None,
         *,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = responsive_sleep,
         rng: random.Random | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:

@@ -43,6 +43,7 @@ from ppx_testkit.core.protocol.ppx_types import REG_FIELD_V1, ModeV1, RegV1, RtS
 from ppx_testkit.exceptions import ConfigError, HardwareError, ProtocolError, SerialDisconnectedError
 from ppx_testkit.logger import RunContext, get_logger
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = get_logger(__name__)
 
@@ -169,7 +170,7 @@ class McbWhiteboxTester:
         cfg: McbWhiteboxConfig,
         *,
         raw_write: RawWriter | None = None,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = responsive_sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.client = client
@@ -405,7 +406,7 @@ def run(settings: AppSettings, ctx: RunContext, *, connect: Connector = open_reg
             tester = McbWhiteboxTester(client, heartbeat, cfg)
             heartbeat.start()
             try:
-                time.sleep(cfg.setup_settle_s)
+                responsive_sleep(cfg.setup_settle_s)
                 tester.run_all()
             finally:
                 tester.teardown()

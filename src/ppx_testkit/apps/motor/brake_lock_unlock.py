@@ -42,6 +42,7 @@ from ppx_testkit.exceptions import (
 )
 from ppx_testkit.logger import RunContext, get_logger
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = get_logger(__name__)
 
@@ -165,7 +166,7 @@ class BrakeLockUnlockCycle:
         load: MotorLink,
         cfg: BrakeTestConfig,
         *,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] = responsive_sleep,
         clock: Callable[[], float] = time.monotonic,
         rng: random.Random | None = None,
     ) -> None:
@@ -483,7 +484,7 @@ def run(
     *,
     codec_factory: CodecFactory | None = None,
     serial_factory: Any = None,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = responsive_sleep,
     clock: Callable[[], float] = time.monotonic,
     rng: random.Random | None = None,
     stop_event: threading.Event | None = None,

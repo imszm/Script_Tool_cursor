@@ -70,6 +70,11 @@
       return "退出码 " + code;
     }
 
+    function finishedText(status) {
+      if (status.forced) return "强制结束：硬件复位可能未完成，请到现场确认断电";
+      return exitText(status.exit_code);
+    }
+
     async function loadAll() {
       const [st, pt] = await Promise.all([
         fetch("/api/stations").then((r) => r.json()),
@@ -192,11 +197,13 @@
       try {
         const status = await fetch("/api/status").then((r) => r.json());
         const running = !!status.running;
-        stopBtn.disabled = !running;
+        stopBtn.disabled = !running || !!status.stop_requested;
         startBtn.disabled = running || !current || !!current.error;
-        if (running) stateEl.textContent = "正在运行 " + (status.station || "");
-        else if (status.exit_code !== null && status.exit_code !== undefined && status.station) {
-          stateEl.textContent = status.station + " " + exitText(status.exit_code);
+        if (running) {
+          const prefix = status.stop_requested ? "正在停止，等待工位收尾 " : "正在运行 ";
+          stateEl.textContent = prefix + (status.station || "");
+        } else if (status.exit_code !== null && status.exit_code !== undefined && status.station) {
+          stateEl.textContent = status.station + " " + finishedText(status);
         }
         fullEl.textContent = status.full_log ? "完整日志 " + status.full_log : "";
         const log = await fetch("/api/log?offset=" + offset).then((r) => r.json());
@@ -218,7 +225,10 @@
       stick = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 24;
     });
     startBtn.onclick = startRun;
-    stopBtn.onclick = () => fetch("/api/stop", { method: "POST" });
+    stopBtn.onclick = () => {
+      stopBtn.disabled = true;
+      fetch("/api/stop", { method: "POST" });
+    };
     document.getElementById("refresh").onclick = loadAll;
     loadAll();
     setInterval(poll, 1000);

@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -23,6 +22,7 @@ from ppx_testkit.core.serial.transport import SerialFactory
 from ppx_testkit.exceptions import ConfigError, HardwareError
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
+from ppx_testkit.utils.timing import responsive_sleep
 
 log = logging.getLogger("ppx_testkit.apps.power_cycle.relay_probe")
 
@@ -52,7 +52,7 @@ def probe(
     relay: RelayDriver,
     *,
     prompt: Callable[[str], str] = input,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = responsive_sleep,
 ) -> int:
     """执行探测步骤；返回 0 表示全部指令发送成功，1 表示中途失败或被操作员中止。"""
     missing = [s.command for s in cfg.steps if s.command not in relay.cfg.commands]

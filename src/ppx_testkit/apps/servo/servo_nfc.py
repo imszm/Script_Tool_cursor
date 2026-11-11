@@ -43,6 +43,7 @@ from ppx_testkit.exceptions import ConfigError, HardwareError, RelayError, TestA
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
 from ppx_testkit.utils.ansi import normalize, strip_ansi
+from ppx_testkit.utils.timing import sleep as interruptible_sleep
 
 log = logging.getLogger(__name__)
 
@@ -217,9 +218,14 @@ class ServoNfcCycle:
         self._wait(self.cfg.move_time_ms / 1000.0 + stay_s)
 
     def _wait(self, seconds: float) -> None:
-        """可被熔断事件立即打断的等待；熔断或监听线程失效时抛出 TestAbort。"""
+        """可被熔断事件立即打断的等待；熔断或监听线程失效时抛出 TestAbort。
+
+        分段等待熔断事件，停止信号最多晚一段就能处理。
+
+        :param seconds: 最长等待秒数。
+        """
         if seconds > 0:
-            self.reader.abort_event.wait(seconds)
+            interruptible_sleep(seconds, self.reader.abort_event)
         self._raise_if_stopped()
 
     def _raise_if_stopped(self) -> None:
