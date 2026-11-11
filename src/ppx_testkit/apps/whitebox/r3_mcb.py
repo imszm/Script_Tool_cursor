@@ -432,42 +432,6 @@ class R3McbTester(R3BasicCases, R3StabilityCases, R3MenuCases):
         log.info("=== 斜坡测试完成 ===")
         return True
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    @staticmethod
-
-
-
-
-
-
-
-
-
-
-
-
     def run_full(self) -> bool:
         log.info("=" * 60)
         log.info("=== 全自动白盒稳定性测试 ===")
@@ -516,8 +480,6 @@ class R3McbTester(R3BasicCases, R3StabilityCases, R3MenuCases):
             log.info("所有用例通过，MCB稳定性良好。")
         log.info("=" * 60)
         return total > 0 and failed == 0
-
-
 
     # ------------------------------------------------------------ 入口
     def execute(self) -> int:

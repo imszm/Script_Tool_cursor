@@ -59,7 +59,14 @@ class R3StabilityCases:
         self.stop_motor()
         self._pause(0.2)
 
+    @staticmethod
     def _crash_suffix(crashed: bool, text: str = " | 死机") -> str:
+        """判定死机时给用例说明追加标记。
+
+        :param crashed: 本用例是否检测到 MCB 死机。
+        :param text: 要追加的文字。
+        :return: 死机时返回 ``text``，否则返回空串。
+        """
         return text if crashed else ""
 
     # ------------------------------------------------------------ 稳定性用例
