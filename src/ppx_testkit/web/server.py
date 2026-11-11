@@ -1,4 +1,9 @@
-"""只监听 127.0.0.1 的网页服务。页面和接口都在本进程里，测试在子进程里跑。"""
+"""只监听 127.0.0.1 的网页服务。页面和接口都在本进程里，测试在子进程里跑。
+
+接口会改写 local.yaml 并启动带电压测，所以只接受 Host 指向本机端口的请求；POST 还要求
+Origin 为本页（或不带 Origin 的本机脚本），``/api/start`` 只收 application/json，
+其他网页无法跨站触发开始或停止。
+"""
 
 from __future__ import annotations
 
@@ -50,6 +55,9 @@ class ConsoleHandler(BaseHTTPRequestHandler):
     server: ConsoleServer
 
     def do_GET(self) -> None:  # noqa: N802 - 标准库要求这个名字
+        if not self._host_ok():
+            self._reject(403, "只接受本机地址访问")
+            return
         path = urlparse(self.path).path
         if path in {"/", "/index.html"}:
             self._send(200, _page_path().read_text(encoding="utf-8"), "text/html; charset=utf-8")
@@ -75,7 +83,13 @@ class ConsoleHandler(BaseHTTPRequestHandler):
         self._json(404, {"error": "没有这个地址"})
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._host_ok() or not self._origin_ok():
+            self._reject(403, "只接受本页发起的请求")
+            return
         path = urlparse(self.path).path
+        if path == "/api/start" and not self._is_json():
+            self._reject(415, "请求必须是 application/json")
+            return
         try:
             body = self._read_json()
             if path == "/api/start":
@@ -95,6 +109,52 @@ class ConsoleHandler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt: str, *args: Any) -> None:
         log.info("%s - %s", self.address_string(), fmt % args)
+
+    def _allowed_hosts(self) -> set[str]:
+        """本机网页的 ``主机:端口`` 写法。端口为 80 时浏览器会省略端口。
+
+        :return: 小写的 Host 取值集合。
+        """
+        port = int(self.server.server_address[1])
+        hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if port == 80:
+            hosts |= {"127.0.0.1", "localhost"}
+        return hosts
+
+    def _host_ok(self) -> bool:
+        """Host 头必须指向本机网页端口，挡住 DNS rebinding。
+
+        :return: 是否允许。
+        """
+        return (self.headers.get("Host") or "").strip().lower() in self._allowed_hosts()
+
+    def _origin_ok(self) -> bool:
+        """浏览器带了 Origin 时必须是本页，挡住其他网页跨站调用；没有 Origin 的本机脚本放行。
+
+        :return: 是否允许。
+        """
+        origin = self.headers.get("Origin")
+        if origin is None:
+            return True
+        return origin.strip().lower() in {f"http://{host}" for host in self._allowed_hosts()}
+
+    def _is_json(self) -> bool:
+        """请求体是否声明为 JSON。跨站的「简单请求」只能用 text/plain 等类型。
+
+        :return: Content-Type 是 application/json 时为 True。
+        """
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        return ctype == "application/json"
+
+    def _reject(self, code: int, message: str) -> None:
+        """记一条警告并返回错误，不读请求体。
+
+        :param code: HTTP 状态码。
+        :param message: 返回给调用方的说明。
+        """
+        log.warning("拒绝请求 %s %s（Host=%r，Origin=%r）: %s", self.command, self.path,
+                    self.headers.get("Host"), self.headers.get("Origin"), message)
+        self._json(code, {"error": message})
 
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))

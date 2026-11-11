@@ -39,6 +39,7 @@ class AppSchema:
 
 def validate_station(app: str, data: Mapping[str, Any]) -> None:
     """校验合并后的工位配置。类型不符、未知字段或缺少必填段时抛出 ConfigError。"""
+    _validate_caution(data)
     _validate_serial(data, _registry().get(app))
     _validate_relay(data, _registry().get(app))
     _validate_keywords(data)
@@ -51,6 +52,19 @@ def validate_station(app: str, data: Mapping[str, Any]) -> None:
             raise ConfigError(f"缺少配置段 '{rule.key}'（应用 {app}）")
         if present:
             from_dict(rule.cls, data[rule.key], rule.key)
+
+
+def _validate_caution(data: Mapping[str, Any]) -> None:
+    """顶层 ``caution`` 只能是字符串。缺省表示网页不单独提示。
+
+    :param data: 合并后的工位配置。
+    :raises ConfigError: 字段存在但不是 str。
+    """
+    if "caution" not in data:
+        return
+    value = data["caution"]
+    if not isinstance(value, str):
+        raise ConfigError(f"配置项 'caution' 应为字符串，实际为 {type(value).__name__}")
 
 
 def _validate_serial(data: Mapping[str, Any], schema: AppSchema | None) -> None:

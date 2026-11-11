@@ -74,6 +74,7 @@ python -m ppx_testkit.web
 ```bat
 ppx-test ui --port 8765
 ppx-test ui --no-browser
+ppx-test ui --stop-grace 30
 ```
 
 `--port` 这里是网页端口。端口已被占用时，向 stderr 写原因并退出，退出码 2。关掉这个窗口就停掉网页服务。正在跑的测试请先在页面上点「停止」。
@@ -84,12 +85,12 @@ ppx-test ui --no-browser
 2. 每一路串口可以选本机已有的口，或留空「不指定，沿用配置」。
 3. 有轮次字段的工位（`test.cycles`、`stress.cycles`、`lamp.cycles`）可以填「只跑这一次的轮次」。留空就用 yaml 里的默认值。合法范围是 1 到 10000000。
 4. 点「开始」。同一时间只能有一场。已有测试在跑时再点开始，页面会拒绝。
-5. 点「停止」会向测试进程发中断，让工位走原来的收尾。等几秒还不退，才会结束进程。
+5. 点「停止」会向测试进程发一次中断，让工位走原来的收尾。默认最多等 20 秒，可用 `ppx-test ui --stop-grace N` 调整（N 必须大于 0）。到点还不退就强制结束进程，页面提示「强制结束：硬件复位可能未完成，请到现场确认断电」。
 6. 下方黑底区域是这场的控制台输出。完整日志仍在 `logs/<工位>/<时间>/full.log`。
 
 选了串口并开始之后，口会写进 `config/local.yaml` 的 `stations.<工位>.serial.<名字>.match.port`。其他键保留。标准库写 YAML 时不保留注释，所以网页保存过后，`local.yaml` 里原来的注释会丢掉。轮次不会写进文件，只出现在这一次的 `--set` 里。
 
-下面这几个工位，页面上会单独提示：
+下面这几个工位，页面上会单独提示。文案来自工位 YAML 顶层的 `caution` 字段；没有这个字段时不单独提示：
 
 | 工位 | 页面上的提示 |
 | --- | --- |
@@ -132,6 +133,8 @@ ppx-test --version
 | 3 | 硬件或通信故障（打开串口失败、继电器发送失败等） |
 | 130 | Ctrl+C，或网页停止后的中断 |
 
+压测工位返回 `summary.exit_code`，所以上面这张表就是进程退出码：中断是 130，串口断开是 3，不是一律 1。
+
 日志目录 `logs/<工位>/<YYYYmmdd_HHMMSS>/`：
 
 | 文件 | 谁写入 | 内容 |
@@ -166,7 +169,7 @@ ppx-test
 
 `app:` 的写法是包内相对路径，点号对应目录。`power_cycle.relay_power_on` 就是 `src/ppx_testkit/apps/power_cycle/relay_power_on.py`，里面必须有 `run(settings, ctx) -> int`。
 
-网页点开始时，主进程不跑测试。它拼出 `python -m ppx_testkit run <工位> [--port ...] [--set ...]`，交给子进程。停止时发 Ctrl+Break（Windows）或 SIGINT，工位里变成 `KeyboardInterrupt`，`finally` 里的复位能够执行。
+网页点开始时，主进程不跑测试。它拼出 `python -m ppx_testkit run <工位> [--port ...] [--set ...]`，交给子进程。停止时发一次 Ctrl+Break（Windows）或 SIGINT。主线程里超过 0.2 秒的等待按 0.2 秒分段（`responsive_sleep` 或 `timing.sleep(秒, stop_event)`），信号在两段之间变成 `KeyboardInterrupt`，然后走进 `finally` 里的复位。第一次停止信号抛出中断；第二次只记一条警告，收尾继续做；第三次再次抛出中断，这时复位可能做不完，设备可能仍带电。网页默认再等 20 秒（`ppx-test ui --stop-grace N`）。到点还没退出就强制结束，页面提示「强制结束：硬件复位可能未完成，请到现场确认断电」。
 
 `settings` 是只读配置对象。`ctx` 是这次运行的目录和写文件方法（`ctx.write_text`、`ctx.write_json`、`ctx.artifact`）。应用返回整数退出码；抛出 `ConfigError` 得到 2，抛出其他 `ToolError` 得到 3。
 
@@ -224,7 +227,7 @@ src/ppx_testkit/logger.py   每次运行一个日志目录
 src/ppx_testkit/station_schema.py  各应用允许的配置段
 src/ppx_testkit/core/       串口、继电器、关键字、协议、循环、报告、窗口、硬件复位
 src/ppx_testkit/profiles/   l5 / p3 / r3 / w3 的 DLL 路径、节点、寄存器、按键枚举。W3 没有 region DLL
-src/ppx_testkit/apps/       各工位流程，含计算器、鼠标坐标、继电器探测、灯板调试、R3 菜单
+src/ppx_testkit/apps/       各工位流程，含计算器、鼠标坐标、继电器探测、灯板调试；R3 菜单是 mixin，不登记
 src/ppx_testkit/web/        本机网页运行台
 resources/dll/l5/           L5 的 5 个运行库
 resources/dll/r3/           R3 的 ppx_ble.dll、ppx_region.dll
@@ -265,7 +268,7 @@ logs/                       运行后才出现，不入库
 | `relay_probe` | `apps/power_cycle/relay_probe.py` |
 | `lrd_debug` | `apps/whitebox/lrd_debug.py` |
 
-`apps/whitebox/r3_menu.py` 是 R3 电机白盒的交互菜单，没有单独的工位 yaml，由 `r3_mcb_whitebox` 调用。`apps/whitebox/r3_names.py` 只重导出 `profiles/r3.py`。
+`apps/whitebox/r3_menu.py` 是 `R3McbTester` 的菜单 mixin，不用 `@register_tool` 登记，也没有单独的工位 yaml。入口是 `r3_mcb_whitebox`（`r3_mcb.action: interactive`）。`apps/whitebox/r3_names.py` 只重导出 `profiles/r3.py`。
 
 要在项目根目录执行命令，或者设置环境变量 `PPX_TESTKIT_ROOT` 指向能同时看到 `config/` 和 `pyproject.toml` 的目录。
 
@@ -389,7 +392,7 @@ ppx-test run mouse_locate
 
 主动停掉整场测试时，代码抛 `TestAbort`。带 `keep_power=True` 表示这一次不要断电，用于失败后保留现场。`relay_power_cycle` 失败默认保持上电，所以试跑请把轮次改小，人在旁边。
 
-网页停止若等了几秒进程还不退，会先 `terminate` 再 `kill`。强杀之后工位自己的 `finally` 可能来不及跑完。所以停测优先用页面上的「停止」或 Ctrl+C，不要直接拔串口或关网页窗口。
+主线程超过 0.2 秒的等待是分段的，停止信号才能打断它并走进复位。第一次停止信号开始收尾；紧接着的第二次会被忽略，避免打断正在做的断电；第三次会再次中断，复位可能来不及做完。网页停止默认再等 20 秒（`ppx-test ui --stop-grace N`）。到点还不退，会先 `terminate` 再 `kill`，页面提示「强制结束：硬件复位可能未完成，请到现场确认断电」。强杀之后工位自己的 `finally` 可能来不及跑完。所以停测优先用页面上的「停止」或 Ctrl+C，不要直接拔串口或关网页窗口。
 
 ## 12. 必要文件对照
 

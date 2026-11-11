@@ -230,4 +230,4 @@ def run(settings: AppSettings, ctx: RunContext) -> int:
         summary=summary.to_dict(),
         columns=["cycle", "vin", "verdict", "detail"],
     )
-    return 0 if summary.ok else 1
+    return summary.exit_code

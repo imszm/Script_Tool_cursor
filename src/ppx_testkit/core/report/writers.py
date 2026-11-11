@@ -33,6 +33,8 @@ _LABELS: dict[str, str] = {
     "ended_at": "结束",
     "duration_s": "耗时",
     "pass_rate": "通过率",
+    "exit_code": "退出码",
+    "error_kind": "异常类别",
     "目标轮数": "目标轮次",
 }
 _STAT_KEYS = (
@@ -48,6 +50,7 @@ _STAT_KEYS = (
     "通过/失败",
     "pass_rate",
     "通过率",
+    "exit_code",
     "用例总数",
     "退出码",
 )

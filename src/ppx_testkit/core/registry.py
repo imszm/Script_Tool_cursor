@@ -22,57 +22,43 @@ class StationMeta:
     :param target: 被装饰的类或函数。
     :param kind: ``station`` 或 ``tool``。
     :param description: 简短说明。
-    :param caution: 网页提示；空字符串表示继续用 catalog 里的旧文案。
     """
 
     name: str
     target: Any
     kind: Kind
     description: str = ""
-    caution: str = ""
 
 
 STATION_REGISTRY: dict[str, StationMeta] = {}
 TOOL_REGISTRY: dict[str, StationMeta] = {}
 
 
-def register_station(
-    name: str,
-    *,
-    description: str = "",
-    caution: str = "",
-) -> Callable[[F], F]:
+def register_station(name: str, *, description: str = "") -> Callable[[F], F]:
     """登记受控工位。同名再次导入时覆盖为最新对象。
 
     :param name: 注册名。
     :param description: 说明。
-    :param caution: 非空时网页优先显示这段提示。
     :return: 装饰器，原样返回被装饰对象。
     """
 
     def decorate(target: F) -> F:
-        _store(STATION_REGISTRY, name, target, "station", description, caution)
+        _store(STATION_REGISTRY, name, target, "station", description)
         return target
 
     return decorate
 
 
-def register_tool(
-    name: str,
-    *,
-    description: str = "",
-    caution: str = "",
-) -> Callable[[F], F]:
+def register_tool(name: str, *, description: str = "") -> Callable[[F], F]:
     """登记不进压测报告的辅助工具。
 
     :param name: 注册名。
     :param description: 说明。
-    :param caution: 非空时网页优先显示这段提示。
     :return: 装饰器，原样返回被装饰对象。
     """
 
     def decorate(target: F) -> F:
-        _store(TOOL_REGISTRY, name, target, "tool", description, caution)
+        _store(TOOL_REGISTRY, name, target, "tool", description)
         return target
 
     return decorate
@@ -93,7 +79,6 @@ def _store(
     target: Any,
     kind: Kind,
     description: str,
-    caution: str,
 ) -> None:
     """写入注册表。
 
@@ -102,7 +87,6 @@ def _store(
     :param target: 被装饰对象。
     :param kind: 入口类别。
     :param description: 说明。
-    :param caution: 网页提示。
     :raises ValueError: 注册名为空。
     """
     cleaned = name.strip()
@@ -113,5 +97,4 @@ def _store(
         target=target,
         kind=kind,
         description=description,
-        caution=caution,
     )

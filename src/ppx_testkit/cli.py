@@ -27,6 +27,7 @@ from typing import Any
 
 from ppx_testkit import __version__
 from ppx_testkit.exceptions import ConfigError, ToolError
+from ppx_testkit.exit_codes import EXIT_CONFIG, EXIT_FAIL, EXIT_HARDWARE, EXIT_INTERRUPTED, EXIT_OK
 from ppx_testkit.logger import setup_logging, shutdown_logging
 from ppx_testkit.settings import (
     AppSettings,
@@ -36,12 +37,6 @@ from ppx_testkit.settings import (
     parse_set_args,
     station_file,
 )
-
-EXIT_OK = 0
-EXIT_FAIL = 1
-EXIT_CONFIG = 2
-EXIT_HARDWARE = 3
-EXIT_INTERRUPTED = 130
 
 
 def _build_parser() -> argparse.ArgumentParser:

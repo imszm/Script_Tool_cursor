@@ -35,15 +35,6 @@ from ppx_testkit.apps.whitebox.r3_names import BRAKE_NAMES, MODE_NAMES, STABILIT
 from ppx_testkit.apps.whitebox.r3_stability import R3StabilityCases
 from ppx_testkit.core.factory import make_region_codec, open_profile_region
 from ppx_testkit.core.protocol.ppx_types import ModeV2, RegV2
-from ppx_testkit.core.protocol.region_v2_motor import (
-    call_reconnect,
-    has_reconnect,
-    read_regs,
-    write_clear_error,
-    write_motion,
-    write_run_mode,
-    write_speed_only,
-)
 from ppx_testkit.core.report.writers import write_csv, write_html
 from ppx_testkit.exceptions import (
     ConfigError,
@@ -55,7 +46,16 @@ from ppx_testkit.exceptions import (
     ToolError,
 )
 from ppx_testkit.logger import RunContext
-from ppx_testkit.profiles.r3 import R3
+from ppx_testkit.profiles.r3 import (
+    R3,
+    call_reconnect,
+    has_reconnect,
+    read_regs,
+    write_clear_error,
+    write_motion,
+    write_run_mode,
+    write_speed_only,
+)
 from ppx_testkit.settings import AppSettings
 from ppx_testkit.utils.timing import responsive_sleep
 

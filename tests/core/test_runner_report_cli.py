@@ -125,6 +125,29 @@ def test_runner_stop_event() -> None:
         StressRunner(ScriptedCycle([]), 0, station="st")
 
 
+@pytest.mark.parametrize(
+    ("outcomes", "expected"),
+    [
+        ([True], 0),
+        ([False], 1),
+        ([KeyboardInterrupt()], 130),
+        ([SerialDisconnectedError("COM3", "gone")], 3),
+        ([ConfigError("missing")], 2),
+        ([ValueError("bug")], 1),
+        ([TestAbort("熔断")], 1),
+    ],
+)
+def test_summary_exit_code(outcomes: list[object], expected: int) -> None:
+    """通过、失败、中断和各类异常分别落到文档约定的退出码。
+
+    :param outcomes: 单轮脚本结果。
+    :param expected: 期望的进程退出码。
+    """
+    summary = StressRunner(ScriptedCycle(outcomes), 1, station="st").run()
+    assert summary.exit_code == expected
+    assert summary.to_dict()["exit_code"] == expected
+
+
 def test_summary_render() -> None:
     s = RunSummary(station="st", target_cycles=10, executed=2, passed=1, failed=1, aborted=True,
                    abort_reason="x", keep_power=True, extra={"异常次数": 3})

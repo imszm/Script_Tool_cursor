@@ -3,6 +3,7 @@
 station: r3_mcb_whitebox
 app: whitebox.r3_mcb
 description: R3 MCB 电机控制白盒测试（交互菜单 / 全自动白盒 + 稳定性压力）
+caution: 这个工位默认是键盘菜单。网页不能替你按键。
 
 serial:
   mcb:

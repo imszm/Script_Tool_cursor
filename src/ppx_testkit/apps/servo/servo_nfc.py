@@ -32,13 +32,12 @@ from ppx_testkit.core.factory import (
     close_ports,
     keyword_config,
     open_ports,
-    servo_from_settings,
 )
 from ppx_testkit.core.monitor.line_reader import BackgroundLogReader
 from ppx_testkit.core.relay.drivers import ServoDriver, servo_command
 from ppx_testkit.core.runner import CycleResult, RunSummary, StressRunner
 from ppx_testkit.core.serial.port_finder import PortFinder
-from ppx_testkit.core.serial.transport import SerialFactory
+from ppx_testkit.core.serial.transport import SerialFactory, SerialTransport
 from ppx_testkit.exceptions import ConfigError, HardwareError, RelayError, TestAbort
 from ppx_testkit.logger import RunContext
 from ppx_testkit.settings import AppSettings
@@ -236,6 +235,22 @@ class ServoNfcCycle:
             raise TestAbort("设备日志监听线程已退出（串口异常且无法恢复），停止测试", keep_power=True)
 
 
+def _build_servo(cfg: ServoNfcConfig, transport: SerialTransport) -> ServoDriver:
+    """按已解析的舵机配置构建总线舵机驱动。每条指令独立开关串口。
+
+    :param cfg: 工位 ``test`` 段。
+    :param transport: 舵机串口。
+    :return: 舵机驱动。
+    """
+    return ServoDriver(
+        transport,
+        servo_id=cfg.servo_id,
+        retries=cfg.servo_retries,
+        retry_delay_s=cfg.servo_retry_delay_s,
+        open_per_command=True,
+    )
+
+
 def run(
     settings: AppSettings,
     ctx: RunContext,
@@ -281,7 +296,7 @@ def run(
             reconnect_interval_s=cfg.reconnect_interval_s,
             recent_lines=cfg.buffer_lines,
         )
-        servo = servo_from_settings(settings, ports["servo"])
+        servo = _build_servo(cfg, ports["servo"])
         cycle = ServoNfcCycle(cfg, servo, reader)
         summary = StressRunner(
             cycle,

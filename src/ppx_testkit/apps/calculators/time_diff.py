@@ -112,7 +112,7 @@ class TimeDiffConfig:
 
 
 # ============================================================ 入口
-@register_tool("calculators.time_diff", description="时间差计算", caution="开始后会再弹出时间差窗口。")
+@register_tool("calculators.time_diff", description="时间差计算")
 def run(settings: AppSettings, ctx: RunContext) -> int:
     cfg = settings.section("time_diff", TimeDiffConfig, required=False)
     if cfg.mode == "gui":

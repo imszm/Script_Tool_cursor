@@ -128,4 +128,4 @@ def run(settings: AppSettings, ctx: RunContext) -> int:
                    for i, r in enumerate(cycle.rows, start=1)]
     write_reports(ctx, "report", title=f"{settings.station} 升级压力测试报告", rows=report_rows,
                   summary=summary.to_dict(), columns=["cycle", "时间", "verdict", "详情"])
-    return 0 if summary.ok else 1
+    return summary.exit_code

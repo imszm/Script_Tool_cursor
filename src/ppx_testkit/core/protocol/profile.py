@@ -1,4 +1,8 @@
-"""机型协议参数。只描述路径和默认值，不加载 DLL。"""
+"""协议 profile 的通用结构。
+
+只描述 DLL 路径和默认通信参数，不含机型数值，也不加载 DLL。
+具体机型在 ``ppx_testkit.profiles`` 里填写这些字段。
+"""
 
 from __future__ import annotations
 

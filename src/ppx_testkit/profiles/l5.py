@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ppx_testkit.core.protocol.heartbeat import ShadowReg
 from ppx_testkit.core.protocol.ppx_types import DevId, RegV1
-from ppx_testkit.profiles.base import ProtocolProfile
+from ppx_testkit.core.protocol.profile import ProtocolProfile
 
 L5 = ProtocolProfile(
     model="l5",

@@ -28,11 +28,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ppx_testkit.core.context import HardwareContext
-from ppx_testkit.core.factory import build_region_client, open_serial
-from ppx_testkit.core.protocol.dll_loader import PpxDll
+from ppx_testkit.core.factory import build_region_client, make_region_codec, open_serial
 from ppx_testkit.core.protocol.ppx_types import BrakeStateV2, DevId, ModeV2
-from ppx_testkit.core.protocol.region_client import RegionCodecV2
-from ppx_testkit.core.protocol.region_v2_motor import MotorLink
 from ppx_testkit.core.report.writers import write_csv, write_html
 from ppx_testkit.core.runner import CycleResult, RunSummary, StressRunner
 from ppx_testkit.exceptions import (
@@ -41,6 +38,7 @@ from ppx_testkit.exceptions import (
     ToolError,
 )
 from ppx_testkit.logger import RunContext, get_logger
+from ppx_testkit.profiles.r3 import R3, MotorLink
 from ppx_testkit.settings import AppSettings
 from ppx_testkit.utils.timing import responsive_sleep
 
@@ -458,8 +456,13 @@ REPORT_COLUMNS = ["index", "verdict", "detail", "load_started", "unlock_ok", "un
                   "unlock_brake", "run_time_s", "lock_ok", "lock_brake", "overheat", "tested_temp", "load_temp"]
 
 
-def _default_codec(dll_path: Path) -> RegionCodecV2:
-    return RegionCodecV2(PpxDll(dll_path))
+def _default_codec(dll_path: Path) -> Any:
+    """按 R3 协议版本加载 region 编解码器。
+
+    :param dll_path: region DLL 路径。
+    :return: 与 :data:`R3.version` 对应的编解码器。
+    """
+    return make_region_codec(dll_path, R3.version)
 
 
 def write_reports(ctx: RunContext, cycle: BrakeLockUnlockCycle, summary: RunSummary) -> None:
@@ -532,4 +535,4 @@ def run(
         summary = runner.run()
 
     write_reports(ctx, cycle, summary)
-    return 0 if summary.ok else 1
+    return summary.exit_code

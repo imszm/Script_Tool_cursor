@@ -4,8 +4,8 @@ L5 / R3 的 DLL 路径从这里取，加载仍由 core.protocol.dll_loader 完�
 W3 没有 region DLL，只登记上位机身份。P3 的通道状态机在 ``p3.py``，不进这张表。
 """
 
+from ppx_testkit.core.protocol.profile import ProtocolProfile
 from ppx_testkit.exceptions import ConfigError
-from ppx_testkit.profiles.base import ProtocolProfile
 from ppx_testkit.profiles.l5 import L5
 from ppx_testkit.profiles.r3 import R3
 from ppx_testkit.profiles.w3 import W3, W3Model

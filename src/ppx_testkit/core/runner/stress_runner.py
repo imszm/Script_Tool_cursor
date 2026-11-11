@@ -15,7 +15,7 @@ from typing import Protocol
 from ppx_testkit.core.gui.screen import is_failsafe
 from ppx_testkit.core.report.writers import append_jsonl
 from ppx_testkit.core.runner.result import CycleResult, RunSummary
-from ppx_testkit.exceptions import TestAbort, ToolError
+from ppx_testkit.exceptions import ConfigError, TestAbort, ToolError
 from ppx_testkit.logger import current_context
 from ppx_testkit.utils.timing import sleep as interruptible_sleep
 
@@ -109,6 +109,7 @@ class StressRunner:
             log.warning("收到 Ctrl+C，停止测试")
         except ToolError as exc:
             s.error = f"{type(exc).__name__}: {exc}"
+            s.error_kind = "config" if isinstance(exc, ConfigError) else "hardware"
             log.error("测试因硬件/配置故障终止: %s", exc, exc_info=True)
         except Exception as exc:  # noqa: BLE001 - 执行器兜底，确保 teardown 与总结一定执行
             if is_failsafe(exc):
@@ -116,6 +117,7 @@ class StressRunner:
                 log.error("触发 pyautogui 防故障机制（鼠标移到屏幕角落），测试停止")
             else:
                 s.error = f"{type(exc).__name__}: {exc}"
+                s.error_kind = "bug"
                 log.critical("测试发生未预期异常", exc_info=True)
         finally:
             if not setup_done:

@@ -222,4 +222,4 @@ def run(settings: AppSettings, ctx: RunContext) -> int:
     summary = StressRunner(cycle, cfg.cycles, station=settings.station).run()
     write_reports(ctx, "report", title=f"{settings.station} 压力测试报告", rows=cycle.rows,
                   summary=summary.to_dict(), columns=["cycle", "verdict", "detail"])
-    return 0 if summary.ok else 1
+    return summary.exit_code

@@ -198,4 +198,4 @@ def run(settings: AppSettings, ctx: RunContext) -> int:
     summary = StressRunner(cycle, cfg.cycles, station=settings.station, stop_on_fail=cfg.stop_on_fail).run()
     write_reports(ctx, "report", title=f"{settings.station} FCT 测试报告", rows=cycle.rows,
                   summary=summary.to_dict(), columns=["cycle", "sn", "verdict", "polls", "detail"])
-    return 0 if summary.ok else 1
+    return summary.exit_code

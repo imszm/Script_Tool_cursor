@@ -516,4 +516,4 @@ def run(settings: AppSettings, ctx: RunContext) -> int:
                            interval_s=cfg.between_rounds_delay_s).run()
     write_reports(ctx, "report", title=f"{settings.station} 多通道 FCT 测试报告", rows=cycle.rows,
                   summary=summary.to_dict(), columns=["round", "channel", "sn", "verdict", "fail_reason"])
-    return 0 if summary.ok else 1
+    return summary.exit_code

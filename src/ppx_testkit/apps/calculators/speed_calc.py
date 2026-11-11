@@ -131,7 +131,7 @@ class SpeedCalcConfig:
 
 
 # ============================================================ 入口
-@register_tool("calculators.speed_calc", description="车速工程计算", caution="开始后会再弹出车速计算窗口。")
+@register_tool("calculators.speed_calc", description="车速工程计算")
 def run(settings: AppSettings, ctx: RunContext) -> int:
     cfg = settings.section("speed_calc", SpeedCalcConfig, required=False)
     if cfg.mode == "gui":

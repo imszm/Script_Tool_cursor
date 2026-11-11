@@ -12,44 +12,14 @@ from typing import Any
 
 import yaml
 
-from ppx_testkit.core.registry import lookup_registered
 from ppx_testkit.exceptions import ConfigError
 from ppx_testkit.settings import _read_yaml, list_stations, load_settings
 from ppx_testkit.utils.paths import config_dir
-
-# 这些工位点「开始」之后仍要键盘或会再弹出窗口，页面上单独提示。
-CAUTIONS: dict[str, str] = {
-    "relay_probe": "这个工位默认每一步都等回车。网页已关掉键盘输入，开始后可能马上结束。",
-    "r3_mcb_whitebox": "这个工位默认是键盘菜单。网页不能替你按键。",
-    "speed_calc": "开始后会再弹出车速计算窗口。",
-    "time_diff": "开始后会再弹出时间差窗口。",
-    "ppx_pctool_stress": (
-        "开始后会控制鼠标和键盘操作 PPX PCTOOL。先在工位配置里改好 vin_click 和 confirm_click，"
-        "上位机窗口露在最前面，输入法切到英文。扫码确认 20 秒后还会点一次力矩校验的确认。"
-        "鼠标移到屏幕左上角可紧急停止。"
-    ),
-}
 
 _CYCLE_SECTIONS = ("test", "stress", "lamp")
 _PORT_RE = re.compile(r"^[A-Za-z0-9_.:/\\-]{1,64}$")
 _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _STATION_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}(?:/[A-Za-z0-9_-]{1,64})*$")
-
-
-def _caution_for(station: str, app: str | None = None) -> str | None:
-    """网页提示。注册信息里写了 caution 时优先，否则回退到 :data:`CAUTIONS`。
-
-    :param station: 工位名。
-    :param app: 配置里的应用路径，可空。
-    :return: 提示文案；没有则 None。
-    """
-    for key in (station, app or ""):
-        if not key:
-            continue
-        meta = lookup_registered(key)
-        if meta is not None and meta.caution:
-            return meta.caution
-    return CAUTIONS.get(station)
 
 
 def station_catalog() -> list[dict[str, Any]]:
@@ -62,7 +32,7 @@ def station_catalog() -> list[dict[str, Any]]:
         try:
             settings = load_settings(name, use_local=True, environ={})
         except ConfigError as exc:
-            rows.append({"name": name, "description": "", "error": str(exc), "serial": [], "caution": _caution_for(name)})
+            rows.append({"name": name, "description": "", "error": str(exc), "serial": [], "caution": None})
             continue
         data = dict(settings.data)
         cycle_key, cycle_default = cycle_field(data)
@@ -73,7 +43,7 @@ def station_catalog() -> list[dict[str, Any]]:
             "serial": serial_fields(data),
             "cycle_key": cycle_key,
             "cycle_default": cycle_default,
-            "caution": _caution_for(settings.station, settings.app),
+            "caution": settings.raw("caution", None),
             "error": None,
         })
     return rows

@@ -1,8 +1,10 @@
-"""R3 MCB 交互菜单。由 R3McbTester 继承，选项顺序与旧脚本一致。"""
+"""``R3McbTester`` 的菜单 mixin，入口是 ``r3_mcb_whitebox``（``r3_mcb.action: interactive``）。
+
+由 ``R3McbTester`` 继承，选项顺序与旧脚本一致。不单独登记，也没有自己的工位 YAML。
+"""
 
 from __future__ import annotations
 
-from ppx_testkit.core.registry import register_tool
 from ppx_testkit.exceptions import (
     TestAbort,
     ToolError,
@@ -10,7 +12,6 @@ from ppx_testkit.exceptions import (
 from ppx_testkit.profiles.r3 import MENU, log
 
 
-@register_tool("whitebox.r3_menu", description="R3 MCB 交互菜单")
 class R3MenuCases:
     # ------------------------------------------------------------ 交互
     def interactive(self) -> None:

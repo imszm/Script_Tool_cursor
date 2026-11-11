@@ -303,4 +303,4 @@ def run(settings: AppSettings, ctx: RunContext) -> int:
             transport.close()
     write_reports(ctx, "report", title=f"{settings.station} 压力测试报告", rows=cycle.rows,
                   summary=summary.to_dict(), columns=["cycle", "sequence", "sn", "verdict", "detail"])
-    return 0 if summary.ok else 1
+    return summary.exit_code

@@ -49,15 +49,24 @@ def test_web_stop_reaches_relay_teardown(tmp_path: Path) -> None:
         "--set", "test.notify=false",
         "--set", f"logging.root_dir={tmp_path.as_posix()}",
     ]
+    # pytest 只给当前进程加 src，子进程要自己能 import ppx_testkit。
+    src = Path(__file__).resolve().parents[2] / "src"
+    previous = os.environ.get("PYTHONPATH")
+    os.environ["PYTHONPATH"] = str(src) if not previous else str(src) + os.pathsep + previous
     session = RunSession()
-    session.start("relay_power_cycle", args, tmp_path / "relay_power_cycle")
     try:
+        session.start("relay_power_cycle", args, tmp_path / "relay_power_cycle")
         assert _wait_for(session, "CH1 -> ON", 30), session.log_from(0)["lines"]
         started = time.monotonic()
         session.stop(grace_s=10)
         elapsed = time.monotonic() - started
     finally:
         session.stop(grace_s=2)
+        if previous is None:
+            os.environ.pop("PYTHONPATH", None)
+        else:
+            os.environ["PYTHONPATH"] = previous
     assert _wait_for(session, "CH1 -> OFF", 5), session.log_from(0)["lines"]
     assert not session.forced
+    assert session.exit_code == 130
     assert elapsed < 3, elapsed

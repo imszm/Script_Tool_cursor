@@ -549,7 +549,7 @@ def run_lamp(
         log.info("间隔统计 [%s]: %s", name, st.render())
 
     _write_reports(ctx, title, cfg.variant, summary, cycle)
-    return 0 if summary.ok else 1
+    return summary.exit_code
 
 
 def _write_reports(ctx: RunContext, title: str, variant: str, summary: RunSummary, cycle: LampCycle) -> None:

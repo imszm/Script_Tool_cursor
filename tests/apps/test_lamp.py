@@ -309,7 +309,7 @@ class TestRunLamp:
         }
         code = run_lamp(settings_factory(data), _ctx(tmp_path), title="t", serial_factory=fake_factory,
                         sleep=clock.sleep, clock=clock)
-        assert code == 1
+        assert code == 130
         assert _all_tx(fake_factory) == [ICSE["ch2_on"], ICSE["ch2_off"]]
         summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
         assert summary["interrupted"] is True
@@ -321,7 +321,7 @@ class TestRunLamp:
         clock = FakeClock()
         code = run_lamp(settings_factory(data), _ctx(tmp_path), title="t", serial_factory=fake_factory,
                         sleep=clock.sleep, clock=clock)
-        assert code == 1
+        assert code == 3
         assert fake_factory.opened == []
         summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
         assert summary["executed"] == 0 and "SerialOpenError" in summary["error"]

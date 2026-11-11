@@ -80,11 +80,7 @@ def probe(
     return 0
 
 
-@register_tool(
-    "power_cycle.relay_probe",
-    description="继电器指令极性探测",
-    caution="这个工位默认每一步都等回车。网页已关掉键盘输入，开始后可能马上结束。",
-)
+@register_tool("power_cycle.relay_probe", description="继电器指令极性探测")
 def run(
     settings: AppSettings,
     ctx: RunContext,

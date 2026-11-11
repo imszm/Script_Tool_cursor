@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 import subprocess
 import sys
 import threading
@@ -21,7 +22,7 @@ from ppx_testkit.web.catalog import (
     serial_fields,
     station_catalog,
 )
-from ppx_testkit.web.server import _page_path
+from ppx_testkit.web.server import ConsoleServer, _page_path
 from ppx_testkit.web.session import RunSession
 
 
@@ -33,6 +34,10 @@ def test_catalog_includes_charge_stations() -> None:
     assert {item["name"] for item in relay["serial"]} == {"relay", "device"}
     assert relay["cycle_key"] == "test.cycles"
     assert relay["caution"] is None
+    probe = next(row for row in rows if row["name"] == "relay_probe")
+    pctool = next(row for row in rows if row["name"] == "ppx_pctool_stress")
+    assert probe["caution"]
+    assert pctool["caution"]
 
 
 def test_charge_station_exposes_relay_and_device() -> None:
@@ -197,6 +202,66 @@ def test_concurrent_stop_sends_one_interrupt(tmp_path: Path) -> None:
     snap = session.snapshot()
     assert proc.interrupts == 1 and not proc.terminated
     assert snap["forced"] is False and snap["exit_code"] == 130
+
+
+def _http_status(
+    port: int,
+    method: str,
+    path: str,
+    *,
+    headers: dict[str, str] | None = None,
+    body: bytes | None = None,
+) -> int:
+    """向本机网页发一次请求，返回 HTTP 状态码。
+
+    :param port: 网页端口。
+    :param method: ``GET`` 或 ``POST``。
+    :param path: 请求路径。
+    :param headers: 额外请求头。
+    :param body: 请求体。
+    :return: 状态码。
+    """
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        conn.request(method, path, body=body, headers=headers or {})
+        response = conn.getresponse()
+        response.read()
+        return response.status
+    finally:
+        conn.close()
+
+
+def test_console_rejects_foreign_origin_host_and_content_type() -> None:
+    """外部网页、伪造 Host 和 text/plain 不能触发运行台；本页停止请求放行。"""
+    server = ConsoleServer(("127.0.0.1", 0), RunSession())
+    thread = threading.Thread(target=server.serve_forever, name="ppx-web-test", daemon=True)
+    thread.start()
+    port = int(server.server_address[1])
+    try:
+        foreign = _http_status(
+            port, "POST", "/api/stop",
+            headers={"Origin": "http://evil.example", "Content-Type": "application/json"},
+            body=b"{}",
+        )
+        local = _http_status(
+            port, "POST", "/api/stop",
+            headers={"Origin": f"http://127.0.0.1:{port}", "Content-Type": "application/json"},
+            body=b"{}",
+        )
+        forged_host = _http_status(port, "GET", "/api/status", headers={"Host": "evil.example"})
+        plain = _http_status(
+            port, "POST", "/api/start",
+            headers={"Content-Type": "text/plain"},
+            body=b"{}",
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(5)
+    assert foreign == 403
+    assert local == 200
+    assert forged_host == 403
+    assert plain == 415
 
 
 def test_new_run_clears_stop_flags(tmp_path: Path) -> None:

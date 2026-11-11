@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import datetime as _dt
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Literal
+
+from ppx_testkit.exit_codes import EXIT_CONFIG, EXIT_FAIL, EXIT_HARDWARE, EXIT_INTERRUPTED, EXIT_OK
 
 
 @dataclass
@@ -28,6 +30,7 @@ class RunSummary:
     keep_power: bool = False
     interrupted: bool = False
     error: str | None = None
+    error_kind: Literal["config", "hardware", "bug"] | None = None
     started_at: str = field(default_factory=lambda: _dt.datetime.now().isoformat(timespec="seconds"))
     ended_at: str | None = None
     duration_s: float = 0.0
@@ -41,11 +44,26 @@ class RunSummary:
     def ok(self) -> bool:
         return not (self.aborted or self.interrupted or self.error) and self.failed == 0
 
+    @property
+    def exit_code(self) -> int:
+        """把这次运行映射成进程退出码。
+
+        :return: 中断 130；配置错误 2；硬件故障 3；通过 0；其余失败 1。
+        """
+        if self.interrupted:
+            return EXIT_INTERRUPTED
+        if self.error_kind == "config":
+            return EXIT_CONFIG
+        if self.error_kind == "hardware":
+            return EXIT_HARDWARE
+        return EXIT_OK if self.ok else EXIT_FAIL
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["pass_rate"] = round(self.pass_rate, 2)
         d["duration_s"] = round(self.duration_s, 3)
         d["ok"] = self.ok
+        d["exit_code"] = self.exit_code
         return d
 
     def render(self) -> str:

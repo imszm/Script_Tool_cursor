@@ -14,14 +14,14 @@
 | --- | --- |
 | `core/` | 串口、继电器、GUI、监控、C DLL 协议、报告、Runner。禁止 L5/R3/W3/P3 常量、寄存器地址和专属业务。 |
 | `profiles/` | `l5` / `p3` / `r3` / `w3` 的机型差异：DLL 路径、节点 ID、寄存器表、按键/菜单枚举、通道状态机。W3 没有 region DLL。 |
-| `apps/` | 各工站业务流程，按 `assembly/` `charge/` `fct/` `lamp/` `motor/` `pctool/` `power_cycle/` `servo/` `whitebox/` `calculators/` 划分。只读配置、组装 core 对象、按步骤执行。车速、时间差、鼠标坐标、继电器探测、灯板调试、R3 菜单也在这里，用 `@register_tool` 登记，不接入压测统计报告。 |
+| `apps/` | 各工站业务流程，按 `assembly/` `charge/` `fct/` `lamp/` `motor/` `pctool/` `power_cycle/` `servo/` `whitebox/` `calculators/` 划分。只读配置、组装 core 对象、按步骤执行。车速、时间差、鼠标坐标、继电器探测、灯板调试也在这里，用 `@register_tool` 登记，不接入压测统计报告。R3 菜单是 mixin，不登记。 |
 | `web/`、`cli.py` | 参数、配置、子进程会话、状态展示。不做硬件操作。 |
 
 `config/stations/<工位>.yaml` 的 `app:` 决定加载 `ppx_testkit.apps.<app>.run`。`core/factory.py` 的 `resolve_runner` 先查注册表，未命中再导入该模块。禁止在 `core/factory.py` 或 `web/catalog.py` 堆 if-elif 工位表，禁止在工位代码里按机型写分支。
 
 `apps/whitebox/r3_names.py` 只重导出 `profiles/r3.py`。改 R3 名称、菜单文案和日志器只改 profile，禁止两处复制。
 
-辅助工具的实现就在对应的 `apps/` 模块里，用 `@register_tool` 登记，注册名与 YAML 的 `app:` 一致：`calculators.speed_calc`、`calculators.time_diff`、`pctool.mouse_locate`、`power_cycle.relay_probe`、`whitebox.lrd_debug`、`whitebox.r3_menu`。不要恢复 `ppx_testkit.tools`，也不要再复制一份业务逻辑。`@register_station` 与 `BaseStation` 已存在，当前 YAML 工位仍走 `apps` 的 `run(settings, ctx)`。新增工位沿用这条路径，并在 `station_schema.py` 登记配置段。
+辅助工具的实现就在对应的 `apps/` 模块里，用 `@register_tool` 登记，注册名与 YAML 的 `app:` 一致：`calculators.speed_calc`、`calculators.time_diff`、`pctool.mouse_locate`、`power_cycle.relay_probe`、`whitebox.lrd_debug`。`apps/whitebox/r3_menu.py` 是 `R3McbTester` 的菜单 mixin，入口是 `r3_mcb_whitebox`（`r3_mcb.action: interactive`），不登记。不要恢复 `ppx_testkit.tools`，也不要再复制一份业务逻辑。`@register_station` 与 `BaseStation` 已存在，当前 YAML 工位仍走 `apps` 的 `run(settings, ctx)`。新增工位沿用这条路径，并在 `station_schema.py` 登记配置段。网页上的单独提示写在工位 YAML 顶层的 `caution`，不要写回注册表或 `web/catalog.py`。
 
 后续新增功能一律在 `apps/` 与 `profiles/` 里扩展：机型常量、DLL 路径、寄存器和窗口身份放 profile，业务流程放 apps。`src/ppx_testkit/tools/` 已删除，不要重新建这个目录。
 
@@ -59,3 +59,10 @@ Web 启动工位走独立子进程。禁止在 Web 主进程用多线程加载�
 串口、继电器、心跳注册到 `core/context.py` 的 `HardwareContext`。供电或启动后立刻登记逆序紧急复位：停心跳 → 电机/抱闸释能 → 继电器断开 → 释放串口。断言失败、串口闪断、`SIGINT` / `SIGTERM`、Web 停止，都要在 `finally` 里走到该复位。
 
 工位只编排：不组 DLL 报文，不直接调用 pyserial / ctypes。
+
+# 运行约定
+
+- 主线程超过 0.2 秒的等待用 `responsive_sleep` 或 `timing.sleep(秒, stop_event)`。可注入 `sleep` 的默认值用 `responsive_sleep`。后台线程和毫秒级轮询不要改成这种等待。
+- 压测工位返回 `summary.exit_code`。
+- 网页提示写在 YAML 的 `caution`。
+- 分层由 `tests/core/test_layering.py` 守卫。

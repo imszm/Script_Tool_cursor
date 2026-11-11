@@ -21,13 +21,12 @@ from typing import Any
 from ppx_testkit.core.monitor.keyword_rules import KeywordConfig, KeywordEvaluator
 from ppx_testkit.core.monitor.line_reader import DeviceLogMonitor
 from ppx_testkit.core.protocol.dll_loader import PpxDll
+from ppx_testkit.core.protocol.profile import ProtocolProfile, ProtocolVersion
 from ppx_testkit.core.protocol.region_client import RegionClient, RegionCodecV1, RegionCodecV2
 from ppx_testkit.core.registry import lookup_registered
 from ppx_testkit.core.relay.base import RelayConfig, RelayDriver, build_relay
-from ppx_testkit.core.relay.drivers import ServoDriver
 from ppx_testkit.core.serial.port_finder import PortFinder
 from ppx_testkit.core.serial.transport import SerialEndpoint, SerialFactory, SerialTransport, open_endpoint
-from ppx_testkit.profiles.base import ProtocolProfile, ProtocolVersion
 from ppx_testkit.settings import AppSettings
 
 
@@ -156,20 +155,6 @@ def build_monitor(
         errors=ep.encoding_errors,
         raw_source=name,
         no_data_warning_s=no_data_warning_s,
-    )
-
-
-def servo_from_settings(settings: AppSettings, transport: SerialTransport) -> ServoDriver:
-    """按舵机工位 ``test`` 段构建总线舵机驱动（每条指令独立开关串口）。"""
-    from ppx_testkit.apps.servo.servo_nfc import ServoNfcConfig
-
-    cfg = settings.section("test", ServoNfcConfig)
-    return ServoDriver(
-        transport,
-        servo_id=cfg.servo_id,
-        retries=cfg.servo_retries,
-        retry_delay_s=cfg.servo_retry_delay_s,
-        open_per_command=True,
     )
 
 

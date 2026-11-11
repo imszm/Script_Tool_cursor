@@ -5,6 +5,7 @@
 station: speed_calc
 app: calculators.speed_calc
 description: 车速计算器（电机转速 / 减速比 / 轮胎外径 -> km/h、mph）
+caution: 开始后会再弹出车速计算窗口。
 
 speed_calc:
   mode: gui              # gui | cli

@@ -1,7 +1,7 @@
 """R3 机型适配：DLL 路径、默认协议参数、名称枚举和 Region V2 电机操作。
 
-名称与菜单仍使用原来的白盒日志器。电机通信日志仍写入
-ppx_testkit.core.protocol.region_v2_motor，避免旧日志过滤失效。
+名称与菜单仍使用原来的白盒日志器。电机通信的日志器名仍是
+``ppx_testkit.core.protocol.region_v2_motor``，避免旧日志过滤失效。
 """
 
 from __future__ import annotations
@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from ppx_testkit.core.protocol.ppx_types import BrakeStateV2, DatSettingV2, DevId, RegV2, RtSetting
+from ppx_testkit.core.protocol.profile import ProtocolProfile
 from ppx_testkit.exceptions import HardwareError, ProtocolError, SerialDisconnectedError
 from ppx_testkit.logger import get_logger
-from ppx_testkit.profiles.base import ProtocolProfile
 from ppx_testkit.utils.timing import responsive_sleep
 
 R3 = ProtocolProfile(

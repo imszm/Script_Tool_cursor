@@ -6,6 +6,7 @@
 station: time_diff
 app: calculators.time_diff
 description: 时间差计算（两个时间点相差小时数）
+caution: 开始后会再弹出时间差窗口。
 
 time_diff:
   mode: gui              # gui | cli

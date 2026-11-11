@@ -46,7 +46,13 @@ def require_runner_options(section: str, cycles: int, max_consecutive_failures: 
 
 
 def finish(summary: RunSummary, *, title: str, notify: bool) -> int:
-    """根据运行结果弹窗提示操作员，并返回进程退出码（0 通过 / 1 失败）。"""
+    """根据运行结果弹窗提示操作员，并返回进程退出码。
+
+    :param summary: 本场压测汇总。
+    :param title: 弹窗标题。
+    :param notify: 为真时弹出结果提示。
+    :return: :attr:`RunSummary.exit_code`。通过 0，失败 1，配置错误 2，硬件故障 3，中断 130。
+    """
     if notify:
         if summary.aborted:
             keep = "\n设备保持当前供电状态以供现场排查" if summary.keep_power else ""
@@ -59,4 +65,4 @@ def finish(summary: RunSummary, *, title: str, notify: bool) -> int:
                 f"{title} - 完成",
                 error=summary.failed > 0,
             )
-    return 0 if summary.ok else 1
+    return summary.exit_code

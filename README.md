@@ -30,7 +30,7 @@ scripts\run_station.bat relay_power_cycle --set test.cycles=2 --port relay=COM3 
 python -m ppx_testkit.web
 ```
 
-等价命令是 `python -m ppx_testkit ui` 或 `ppx-test ui`。浏览器打开 `http://127.0.0.1:8765`。页面只监听本机，同一时间只能跑一场。可选 `--port 8765` 改网页端口，`--no-browser` 不自动打开浏览器。网页写入 `config/local.yaml` 的串口，轮次只对这一次生效。
+等价命令是 `python -m ppx_testkit ui` 或 `ppx-test ui`。浏览器打开 `http://127.0.0.1:8765`。页面只监听本机，同一时间只能跑一场。可选 `--port 8765` 改网页端口，`--no-browser` 不自动打开浏览器。网页写入 `config/local.yaml` 的串口，轮次只对这一次生效。点「停止」后默认最多等 20 秒让工位收尾，可用 `ppx-test ui --stop-grace N` 调整；超时强杀时页面会提示「强制结束」。
 
 ### 3. 命令行
 
@@ -149,7 +149,7 @@ tests/hardware                    真实串口 / 继电器
 新增一个工位：
 
 1. 在 `config/stations/` 新建 `<工位名>.yaml`，能复用的继电器口、关键字和点击坐标用 `include` 引用 `_fragments/`。
-2. `app:` 指向已有模块，或在 `src/ppx_testkit/apps/<域>/` 实现 `run(settings, ctx) -> int`。机型差异写在 `src/ppx_testkit/profiles/`。辅助工具同样写在 `apps/`，用 `@register_tool` 登记。不要使用已删除的 `src/ppx_testkit/tools/`。
+2. `app:` 指向已有模块，或在 `src/ppx_testkit/apps/<域>/` 实现 `run(settings, ctx) -> int`。机型差异写在 `src/ppx_testkit/profiles/`。辅助工具同样写在 `apps/`，用 `@register_tool` 登记。不要使用已删除的 `src/ppx_testkit/tools/`。网页上要单独提示的工位，在 yaml 顶层写 `caution:` 字符串。
 3. 在 `src/ppx_testkit/station_schema.py` 登记该应用的配置段和串口名。
 4. 串口号只写 `config/local.yaml` 或通过 `--port` 传入。
 5. 先 `ppx-test show <工位名>`，再限制轮次试跑。
