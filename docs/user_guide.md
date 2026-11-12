@@ -110,10 +110,11 @@ ppx-test ports
 ppx-test show relay_power_cycle
 ppx-test run relay_power_cycle --set test.cycles=2 --port relay=COM3 --port device=COM13
 ppx-test ui --no-browser
+ppx-test ui --stop-grace 20
 ppx-test --version
 ```
 
-`show` 和 `run` 的工位参数可以是工位名，也可以是 yaml 文件路径。
+`show` 和 `run` 的工位参数可以是工位名，也可以是 yaml 文件路径。`ppx-test ui --stop-grace N` 设置网页停止后等待工位收尾的秒数，N 必须大于 0，默认 20。到点还不退就强制结束，页面提示「强制结束：硬件复位可能未完成，请到现场确认断电」。
 
 | 参数 | 作用 |
 | --- | --- |
@@ -465,7 +466,7 @@ ppx-test run mouse_locate
 新增一个工位时：
 
 1. 在 `config/stations/` 新建 `<工位名>.yaml`。能复用的继电器口、关键字和点击坐标用 `include` 引用 `_fragments/`。
-2. `app:` 指向已有模块，或在 `src/ppx_testkit/apps/<域>/` 实现 `run(settings, ctx) -> int`。辅助工具同样写在 `apps/`，用 `@register_tool` 登记，注册名与 `app:` 一致。
+2. `app:` 指向已有模块，或在 `src/ppx_testkit/apps/<域>/` 实现 `run(settings, ctx) -> int`。辅助工具同样写在 `apps/`，用 `@register_tool` 登记，注册名与 `app:` 一致。网页上要单独提示时，在 yaml 顶层写 `caution:` 字符串。`r3_menu` 是菜单 mixin，不登记。
 3. 在 `src/ppx_testkit/station_schema.py` 登记该应用的配置段和串口名。
 4. 串口号只写 `config/local.yaml`，或通过 `--port` 传入。
 5. 先 `ppx-test show <工位名>`，再限制轮次试跑。

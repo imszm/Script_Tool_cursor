@@ -129,7 +129,7 @@ src/ppx_testkit/
   logger.py
   core/     serial  relay  protocol  monitor  runner  report  gui
   profiles/ l5.py  p3.py  r3.py  w3.py
-  apps/     工站流程，含计算器、鼠标坐标、继电器探测、灯板调试、R3 菜单
+  apps/     工站流程，含计算器、鼠标坐标、继电器探测、灯板调试；R3 菜单是 mixin，不登记
   web/      python -m ppx_testkit.web
 resources/dll/l5/   resources/dll/r3/   resources/dll/manifest.json
 resources/include/  头文件
