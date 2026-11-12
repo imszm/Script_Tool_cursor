@@ -23,7 +23,7 @@ from ppx_testkit.web.catalog import (
     station_catalog,
 )
 from ppx_testkit.web.server import ConsoleServer, _page_path
-from ppx_testkit.web.session import RunSession
+from ppx_testkit.web.session import RunSession, _tail
 
 
 def test_catalog_includes_charge_stations() -> None:
@@ -34,6 +34,9 @@ def test_catalog_includes_charge_stations() -> None:
     assert {item["name"] for item in relay["serial"]} == {"relay", "device"}
     assert relay["cycle_key"] == "test.cycles"
     assert relay["caution"] is None
+    assert relay["group"] == "power_cycle"
+    speed = next(row for row in rows if row["name"] == "speed_calc")
+    assert speed["group"] == "calculators"
     probe = next(row for row in rows if row["name"] == "relay_probe")
     pctool = next(row for row in rows if row["name"] == "ppx_pctool_stress")
     assert probe["caution"]
@@ -262,6 +265,43 @@ def test_console_rejects_foreign_origin_host_and_content_type() -> None:
     assert local == 200
     assert forged_host == 403
     assert plain == 415
+
+
+def test_tail_reads_end_of_large_file(tmp_path: Path) -> None:
+    """超过 64 KB 时只从末尾取行，最后几行要和原文一致。打不开的文件返回空列表。"""
+    path = tmp_path / "full.log"
+    lines = [f"row-{index:05d}-" + ("x" * 80) for index in range(2000)]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert path.stat().st_size > 64 * 1024
+    assert _tail(path, 3) == lines[-3:]
+    small = tmp_path / "small.log"
+    small.write_text("only\n", encoding="utf-8")
+    assert _tail(small, 5) == ["only"]
+    assert _tail(tmp_path / "missing.log", 5) == []
+
+
+def test_snapshot_hides_tail_while_running(tmp_path: Path) -> None:
+    """运行中不带 full.log 尾部，并给出启动时刻；结束后尾部来自本场日志。"""
+    proc = _FakeProc(exits_on_interrupt=True)
+    session = _fake_session(proc)
+    session.start("demo", ["python"], tmp_path)
+    running = session.snapshot()
+    assert running["running"] is True
+    assert running["full_tail"] == []
+    assert isinstance(running["started_at"], float)
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    full = run_dir / "full.log"
+    full.write_text("alpha\nbeta\n", encoding="utf-8")
+    assert session.snapshot()["full_tail"] == []
+    assert session.latest_full_log() == full
+
+    session.stop(grace_s=1)
+    done = session.snapshot()
+    assert done["running"] is False
+    assert done["full_tail"] == ["alpha", "beta"]
+    assert done["full_log"] == str(full)
 
 
 def test_new_run_clears_stop_flags(tmp_path: Path) -> None:

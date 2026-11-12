@@ -22,6 +22,8 @@ InterruptFn = Callable[[subprocess.Popen[str]], None]
 DEFAULT_STOP_GRACE_S = 20.0
 
 _MAX_LINES = 4000
+#: 取日志尾部时只读文件末尾这么多字节，避免每秒把整份 full.log 读进内存。
+_TAIL_BYTES = 64 * 1024
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +55,7 @@ class RunSession:
         self.exit_code: int | None = None
         self.stop_requested = False
         self.forced = False
+        self._cached_full_log: Path | None = None
 
     def running(self) -> bool:
         """当前子进程是否还在。"""
@@ -76,6 +79,7 @@ class RunSession:
             self.exit_code = None
             self.stop_requested = False
             self.forced = False
+            self._cached_full_log = None
             self.station = station
             self.log_root = log_root
             self.started_at = time.time()
@@ -139,18 +143,22 @@ class RunSession:
     def snapshot(self) -> dict[str, Any]:
         """当前状态。exit_code 在进程结束后才有值。
 
-        :return: 运行状态、退出码、是否已请求停止、是否被强制结束，以及本次 full.log 的位置和尾部。
+        运行中不读 full.log 尾部。结束后才取最后若干行，供页面补上控制台没接到的收尾日志。
+
+        :return: 运行状态、启动时刻、退出码、是否已请求停止、是否被强制结束，以及本次 full.log 的位置和尾部。
         """
         self._capture_exit()
+        running = self.running()
         full = self.latest_full_log()
         return {
-            "running": self.running(),
+            "running": running,
             "station": self.station,
+            "started_at": self.started_at,
             "exit_code": self.exit_code,
             "stop_requested": self.stop_requested,
             "forced": self.forced,
             "full_log": str(full) if full else None,
-            "full_tail": _tail(full, 40) if full else [],
+            "full_tail": [] if running or full is None else _tail(full, 40),
         }
 
     def log_from(self, offset: int) -> dict[str, Any]:
@@ -166,9 +174,17 @@ class RunSession:
             return {"next": self._base + len(self._lines), "lines": lines}
 
     def latest_full_log(self) -> Path | None:
-        """本次启动之后新建的 full.log。还没写出来时返回 None。"""
-        root = self.log_root
+        """本次启动之后新建的 full.log。还没写出来时返回 None。
+
+        找到后记在本场会话里。下一场 ``start`` 会清掉，避免每次轮询都扫日志目录。
+        """
         started = self.started_at
+        cached = self._cached_full_log
+        if cached is not None and started is not None:
+            if _log_is_current(cached, started):
+                return cached
+            self._cached_full_log = None
+        root = self.log_root
         if root is None or started is None or not root.is_dir():
             return None
         found: list[Path] = []
@@ -179,13 +195,15 @@ class RunSession:
         for child in children:
             full = child / "full.log"
             try:
-                if child.is_dir() and full.is_file() and full.stat().st_mtime >= started - 2:
+                if child.is_dir() and _log_is_current(full, started):
                     found.append(full)
             except OSError:
                 continue
         if not found:
             return None
-        return max(found, key=lambda path: path.stat().st_mtime)
+        chosen = max(found, key=lambda path: path.stat().st_mtime)
+        self._cached_full_log = chosen
+        return chosen
 
     def _capture_exit(self) -> None:
         proc = self._proc
@@ -219,9 +237,39 @@ def _interrupt(proc: subprocess.Popen[str]) -> None:
     os.kill(proc.pid, signal.SIGINT)
 
 
-def _tail(path: Path, limit: int) -> list[str]:
+def _log_is_current(path: Path, started: float) -> bool:
+    """文件是否像本场测试写出的 full.log。
+
+    :param path: 候选日志。
+    :param started: 本场启动的 ``time.time()`` 秒。
+    :return: 是普通文件且修改时间不早于启动前 2 秒。
+    """
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return path.is_file() and path.stat().st_mtime >= started - 2
+    except OSError:
+        return False
+
+
+def _tail(path: Path, limit: int) -> list[str]:
+    """读文件最后 ``limit`` 行，只碰末尾约 64 KB。
+
+    从末尾往前读时，开头可能切在一行中间，这一截丢掉。文件更短时整段解码。
+
+    :param path: 日志文件。
+    :param limit: 最多返回的行数。
+    :return: 末尾若干行。打不开文件或 limit 小于 1 时返回空列表。
+    """
+    if limit < 1:
+        return []
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - _TAIL_BYTES))
+            chunk = handle.read()
     except OSError:
         return []
+    lines = chunk.decode("utf-8", errors="replace").splitlines()
+    if size > _TAIL_BYTES and lines:
+        lines = lines[1:]
     return lines[-limit:]

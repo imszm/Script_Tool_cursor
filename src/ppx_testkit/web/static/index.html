@@ -5,27 +5,93 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ppx 测试运行台</title>
   <style>
-    :root { color-scheme: light dark; }
-    body { margin: 0; font: 15px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif; }
-    header { padding: 16px 20px; border-bottom: 1px solid #ccc; }
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f7f9;
+      --fg: #1c1c1c;
+      --muted: #5c6570;
+      --line: #d0d4da;
+      --panel: #fff;
+      --active: #e7f0ff;
+      --caution-bg: #fff4d6;
+      --caution-fg: #333;
+      --ok: #0b7a32;
+      --bad: #b42318;
+      --run: #1d4e89;
+      --start: #1565c0;
+      --start-fg: #fff;
+      --stop: #c62828;
+      --stop-fg: #fff;
+      --log-bg: #111;
+      --log-fg: #e8e8e8;
+      --forced-bg: #fde8e6;
+      --forced-fg: #8a1c13;
+      --forced-border: #e7b2ac;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1c1f;
+        --fg: #e8eaed;
+        --muted: #a8b0b8;
+        --line: #3a3f46;
+        --panel: #23262b;
+        --active: #24344d;
+        --caution-bg: #3d3420;
+        --caution-fg: #f3e6c0;
+        --ok: #7dcea0;
+        --bad: #f5a8a0;
+        --run: #9ec5f0;
+        --start: #1e6fd6;
+        --stop: #d32f2f;
+        --log-bg: #0d0e10;
+        --log-fg: #e8e8e8;
+        --forced-bg: #3d1f1c;
+        --forced-fg: #ffc9c2;
+        --forced-border: #8a3a32;
+      }
+    }
+    body { margin: 0; font: 15px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: var(--bg); color: var(--fg); }
+    header { padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
     header h1 { margin: 0 0 4px; font-size: 20px; }
-    header p { margin: 0; opacity: 0.8; }
+    header p { margin: 0; color: var(--muted); }
     main { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 78px); }
-    aside { border-right: 1px solid #ccc; overflow: auto; }
-    button.station { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #ddd;
-      background: transparent; padding: 10px 14px; cursor: pointer; }
+    aside { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0;
+      background: var(--panel); }
+    .filter { padding: 8px; border-bottom: 1px solid var(--line); }
+    .filter input { width: 100%; box-sizing: border-box; min-width: 0; }
+    #list { overflow: auto; flex: 1; }
+    h3.group { margin: 0; padding: 10px 14px 2px; font-size: 12px; color: var(--muted); font-weight: 600; }
+    button.station { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line);
+      background: transparent; color: inherit; padding: 10px 14px; cursor: pointer; }
     button.station strong { display: block; }
-    button.station span { display: block; font-size: 12px; opacity: 0.75; }
-    button.station.active { background: #e7f0ff; }
-    section { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+    button.station span { display: block; font-size: 12px; color: var(--muted); }
+    button.station.active { background: var(--active); }
+    .empty { padding: 12px 14px; color: var(--muted); }
+    section { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
     label { display: block; margin: 8px 0; }
-    select, input { font: inherit; padding: 6px 8px; min-width: 220px; }
+    select, input { font: inherit; padding: 6px 8px; min-width: 220px; background: var(--panel); color: inherit;
+      border: 1px solid var(--line); }
     .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .caution { padding: 8px 10px; background: #fff4d6; color: #333; }
+    button.primary, button.danger, button.plain { font: inherit; padding: 6px 16px; cursor: pointer; }
+    button.primary { background: var(--start); color: var(--start-fg); border: 0; }
+    button.danger { background: var(--stop); color: var(--stop-fg); border: 0; }
+    button.plain { background: transparent; color: inherit; border: 1px solid var(--line); }
+    button:disabled { opacity: 0.55; cursor: default; }
+    .caution { padding: 8px 10px; background: var(--caution-bg); color: var(--caution-fg); }
+    .forced { padding: 8px 10px; background: var(--forced-bg); color: var(--forced-fg);
+      border: 1px solid var(--forced-border); font-weight: 600; }
+    #state.run { color: var(--run); font-weight: 600; }
+    #state.ok { color: var(--ok); font-weight: 600; }
+    #state.bad { color: var(--bad); font-weight: 600; }
+    #state.idle { color: var(--muted); }
     #log { flex: 1; min-height: 240px; margin: 0; padding: 10px; overflow: auto;
-      background: #111; color: #e8e8e8; font: 12px/1.45 Consolas, monospace; white-space: pre-wrap; }
-    .muted { opacity: 0.75; }
-    @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+      background: var(--log-bg); color: var(--log-fg); font: 12px/1.45 Consolas, monospace; white-space: pre-wrap; }
+    .muted { color: var(--muted); }
+    @media (max-width: 800px) {
+      main { grid-template-columns: 1fr; }
+      #list { max-height: 280px; }
+    }
   </style>
 </head>
 <body>
@@ -34,15 +100,21 @@
     <p>选工位、对一下串口，再点开始。同一时间只能跑一场。关键字和坐标仍在工位配置里，这个页面不改它们。</p>
   </header>
   <main>
-    <aside id="list"></aside>
+    <aside>
+      <div class="filter">
+        <input id="filter" type="search" placeholder="搜索工位名字或说明" autocomplete="off">
+      </div>
+      <div id="list"></div>
+    </aside>
     <section>
       <div id="detail" class="muted">先从左边选一个工位。</div>
       <div class="row">
-        <button id="start" type="button" disabled>开始</button>
-        <button id="stop" type="button" disabled>停止</button>
-        <button id="refresh" type="button">刷新串口</button>
+        <button id="start" class="primary" type="button" disabled>开始</button>
+        <button id="stop" class="danger" type="button" disabled>停止</button>
+        <button id="refresh" class="plain" type="button">刷新串口</button>
         <span id="state"></span>
       </div>
+      <div id="forced" class="forced" hidden>强制结束：硬件复位可能未完成，请到现场确认断电</div>
       <p id="full" class="muted"></p>
       <pre id="log"></pre>
     </section>
@@ -53,13 +125,22 @@
     const logEl = document.getElementById("log");
     const stateEl = document.getElementById("state");
     const fullEl = document.getElementById("full");
+    const forcedEl = document.getElementById("forced");
     const startBtn = document.getElementById("start");
     const stopBtn = document.getElementById("stop");
+    const MAX_LOG_LINES = 4000;
     let stations = [];
     let ports = [];
     let current = null;
     let offset = 0;
     let stick = true;
+    let isRunning = false;
+    let startPending = false;
+    let query = "";
+    let runGen = 0;
+    let logLines = [];
+    let logTrimmed = false;
+    let tailShown = false;
 
     function exitText(code) {
       if (code === 0) return "通过";
@@ -75,28 +156,145 @@
       return exitText(status.exit_code);
     }
 
+    function elapsedText(startedAt) {
+      if (typeof startedAt !== "number") return "";
+      const whole = Math.max(0, Math.floor(Date.now() / 1000 - startedAt));
+      const hh = String(Math.floor(whole / 3600)).padStart(2, "0");
+      const mm = String(Math.floor((whole % 3600) / 60)).padStart(2, "0");
+      const ss = String(whole % 60).padStart(2, "0");
+      return hh + ":" + mm + ":" + ss;
+    }
+
+    function stateKind(status, running) {
+      if (running) return "run";
+      if (status.forced) return "bad";
+      if (status.exit_code === 0) return "ok";
+      if (status.exit_code === 1 || status.exit_code === 2 || status.exit_code === 3) return "bad";
+      return "idle";
+    }
+
+    function syncStartButton() {
+      startBtn.disabled = startPending || isRunning || !current || !!current.error;
+    }
+
+    function renderLog() {
+      const follow = stick;
+      const note = logTrimmed ? "已省略较早日志，完整内容见 full.log\n" : "";
+      const body = logLines.length ? logLines.join("\n") + "\n" : "";
+      logEl.textContent = note + body;
+      if (follow) logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function appendLines(lines) {
+      if (!lines || !lines.length) return;
+      for (const line of lines) logLines.push(line);
+      if (logLines.length > MAX_LOG_LINES) {
+        logLines.splice(0, logLines.length - MAX_LOG_LINES);
+        logTrimmed = true;
+      }
+      renderLog();
+    }
+
+    function clearLog() {
+      logLines = [];
+      logTrimmed = false;
+      tailShown = false;
+      renderLog();
+    }
+
+    function readForm() {
+      const chosen = {};
+      detailEl.querySelectorAll("select[data-port]").forEach((sel) => {
+        chosen[sel.dataset.port] = sel.value;
+      });
+      const cyclesEl = document.getElementById("cycles");
+      return {
+        station: current ? current.name : null,
+        ports: chosen,
+        cycles: cyclesEl ? cyclesEl.value : null
+      };
+    }
+
+    function writeForm(saved) {
+      if (!saved || !current || saved.station !== current.name) return;
+      detailEl.querySelectorAll("select[data-port]").forEach((sel) => {
+        const value = saved.ports[sel.dataset.port];
+        if (value === undefined) return;
+        const known = Array.from(sel.options).some((opt) => opt.value === value);
+        if (value && !known) {
+          const extra = document.createElement("option");
+          extra.value = value;
+          extra.textContent = value + "（已保存）";
+          sel.appendChild(extra);
+        }
+        sel.value = value;
+      });
+      const cyclesEl = document.getElementById("cycles");
+      if (cyclesEl && saved.cycles !== null) cyclesEl.value = saved.cycles;
+    }
+
     async function loadAll() {
-      const [st, pt] = await Promise.all([
-        fetch("/api/stations").then((r) => r.json()),
-        fetch("/api/ports").then((r) => r.json())
-      ]);
-      stations = st.stations || [];
-      ports = pt.ports || [];
+      const saved = readForm();
+      try {
+        const [st, pt] = await Promise.all([
+          fetch("/api/stations").then((r) => r.json()),
+          fetch("/api/ports").then((r) => r.json())
+        ]);
+        stations = st.stations || [];
+        ports = pt.ports || [];
+      } catch (err) {
+        stateEl.textContent = "工位列表加载失败";
+        stateEl.className = "bad";
+        return;
+      }
       drawList();
       if (current) show(stations.find((s) => s.name === current.name) || current);
+      writeForm(saved);
     }
 
     function drawList() {
       listEl.innerHTML = "";
-      stations.forEach((st) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "station" + (current && current.name === st.name ? " active" : "");
-        btn.innerHTML = "<strong></strong><span></span>";
-        btn.querySelector("strong").textContent = st.name;
-        btn.querySelector("span").textContent = st.error || st.description || "";
-        btn.onclick = () => show(st);
-        listEl.appendChild(btn);
+      const q = query.trim().toLowerCase();
+      const visible = stations.filter((st) => {
+        if (!q) return true;
+        const blob = (st.name + " " + (st.description || "") + " " + (st.error || "")).toLowerCase();
+        return blob.includes(q);
+      });
+      if (!visible.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = "没有匹配的工位";
+        listEl.appendChild(empty);
+        return;
+      }
+      const groups = new Map();
+      visible.forEach((st) => {
+        const key = st.group || "配置有误";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(st);
+      });
+      const keys = Array.from(groups.keys()).sort((a, b) => {
+        if (a === "配置有误") return 1;
+        if (b === "配置有误") return -1;
+        return a.localeCompare(b);
+      });
+      keys.forEach((key) => {
+        const heading = document.createElement("h3");
+        heading.className = "group";
+        heading.textContent = key;
+        listEl.appendChild(heading);
+        groups.get(key).forEach((st) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "station" + (current && current.name === st.name ? " active" : "");
+          const name = document.createElement("strong");
+          name.textContent = st.name;
+          const sub = document.createElement("span");
+          sub.textContent = st.error || st.description || "";
+          btn.append(name, sub);
+          btn.onclick = () => show(st);
+          listEl.appendChild(btn);
+        });
       });
     }
 
@@ -130,6 +328,7 @@
     function show(st) {
       current = st;
       drawList();
+      detailEl.classList.remove("muted");
       detailEl.innerHTML = "";
       const title = document.createElement("h2");
       title.textContent = st.name;
@@ -141,7 +340,7 @@
         const err = document.createElement("p");
         err.textContent = st.error;
         detailEl.appendChild(err);
-        startBtn.disabled = true;
+        syncStartButton();
         return;
       }
       if (st.caution) {
@@ -162,63 +361,95 @@
         label.appendChild(input);
         detailEl.appendChild(label);
       }
-      startBtn.disabled = false;
+      syncStartButton();
     }
 
     function collectPorts() {
-      const ports = {};
+      const chosen = {};
       detailEl.querySelectorAll("select[data-port]").forEach((sel) => {
-        ports[sel.dataset.port] = sel.value;
+        chosen[sel.dataset.port] = sel.value;
       });
-      return ports;
+      return chosen;
     }
 
     async function startRun() {
-      if (!current) return;
+      if (!current || isRunning || startPending || current.error) return;
       const cyclesEl = document.getElementById("cycles");
       let cycles = null;
       if (cyclesEl && cyclesEl.value !== "") cycles = Number(cyclesEl.value);
-      const resp = await fetch("/api/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ station: current.name, ports: collectPorts(), cycles })
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        stateEl.textContent = data.error || "启动失败";
+      startPending = true;
+      syncStartButton();
+      let resp;
+      let data;
+      try {
+        resp = await fetch("/api/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ station: current.name, ports: collectPorts(), cycles })
+        });
+        data = await resp.json();
+      } catch (err) {
+        startPending = false;
+        stateEl.textContent = "启动失败";
+        stateEl.className = "bad";
+        syncStartButton();
         return;
       }
+      startPending = false;
+      if (!resp.ok) {
+        stateEl.textContent = data.error || "启动失败";
+        stateEl.className = "bad";
+        syncStartButton();
+        return;
+      }
+      runGen += 1;
       offset = 0;
-      logEl.textContent = "";
+      clearLog();
+      forcedEl.hidden = true;
+      isRunning = true;
+      stopBtn.disabled = false;
       stateEl.textContent = "正在运行 " + current.name;
+      stateEl.className = "run";
+      syncStartButton();
     }
 
     async function poll() {
+      const gen = runGen;
       try {
         const status = await fetch("/api/status").then((r) => r.json());
+        const log = await fetch("/api/log?offset=" + offset).then((r) => r.json());
+        if (gen !== runGen) return;
         const running = !!status.running;
+        isRunning = running;
         stopBtn.disabled = !running || !!status.stop_requested;
-        startBtn.disabled = running || !current || !!current.error;
+        syncStartButton();
+        forcedEl.hidden = !status.forced;
         if (running) {
           const prefix = status.stop_requested ? "正在停止，等待工位收尾 " : "正在运行 ";
-          stateEl.textContent = prefix + (status.station || "");
+          const elapsed = elapsedText(status.started_at);
+          stateEl.textContent = prefix + (status.station || "") + (elapsed ? " 已运行 " + elapsed : "");
+          stateEl.className = "run";
         } else if (status.exit_code !== null && status.exit_code !== undefined && status.station) {
           stateEl.textContent = status.station + " " + finishedText(status);
+          stateEl.className = stateKind(status, false);
         }
         fullEl.textContent = status.full_log ? "完整日志 " + status.full_log : "";
-        const log = await fetch("/api/log?offset=" + offset).then((r) => r.json());
-        if (log.lines && log.lines.length) {
-          logEl.textContent += log.lines.join("\n") + "\n";
-          if (stick) logEl.scrollTop = logEl.scrollHeight;
-        }
-        offset = log.next || offset;
-        if (status.full_tail && status.full_tail.length && !running) {
-          const mark = "\n----- full.log 尾部 -----\n";
-          if (!logEl.textContent.includes(mark)) logEl.textContent += mark + status.full_tail.join("\n") + "\n";
+        if (log.lines && log.lines.length) appendLines(log.lines);
+        offset = typeof log.next === "number" ? log.next : offset;
+        if (!running && status.full_tail && status.full_tail.length && !tailShown) {
+          tailShown = true;
+          appendLines(["----- full.log 尾部 -----"].concat(status.full_tail));
         }
       } catch (err) {
+        if (gen !== runGen) return;
         stateEl.textContent = "网页连接中断";
+        stateEl.className = "bad";
       }
+    }
+
+    async function loop() {
+      await poll();
+      setTimeout(loop, 1000);
     }
 
     logEl.addEventListener("scroll", () => {
@@ -227,11 +458,23 @@
     startBtn.onclick = startRun;
     stopBtn.onclick = () => {
       stopBtn.disabled = true;
-      fetch("/api/stop", { method: "POST" });
+      fetch("/api/stop", { method: "POST" })
+        .then((resp) => {
+          if (!resp.ok) throw new Error("停止失败");
+        })
+        .catch(() => {
+          stateEl.textContent = "停止请求失败";
+          stateEl.className = "bad";
+          stopBtn.disabled = !isRunning;
+        });
     };
+    document.getElementById("filter").addEventListener("input", (ev) => {
+      query = ev.target.value;
+      drawList();
+    });
     document.getElementById("refresh").onclick = loadAll;
     loadAll();
-    setInterval(poll, 1000);
+    loop();
   </script>
 </body>
 </html>

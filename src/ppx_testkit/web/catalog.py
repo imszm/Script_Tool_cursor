@@ -23,7 +23,10 @@ _STATION_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}(?:/[A-Za-z0-9_-]{1,64})*$")
 
 
 def station_catalog() -> list[dict[str, Any]]:
-    """列出全部工位：说明、串口名、当前口、轮次字段。单个工位读失败时带上 error，不拖垮整份列表。
+    """列出全部工位：说明、串口名、当前口、轮次字段、功能域。单个工位读失败时带上 error，不拖垮整份列表。
+
+    ``group`` 取 ``app`` 第一个点号前的包名，例如 ``power_cycle.relay_power_on`` 得到 ``power_cycle``。
+    配置读失败时 ``group`` 为 None。这里不维护工位到分组的对照表。
 
     :return: 按工位名排序的字典列表。
     """
@@ -32,7 +35,14 @@ def station_catalog() -> list[dict[str, Any]]:
         try:
             settings = load_settings(name, use_local=True, environ={})
         except ConfigError as exc:
-            rows.append({"name": name, "description": "", "error": str(exc), "serial": [], "caution": None})
+            rows.append({
+                "name": name,
+                "description": "",
+                "error": str(exc),
+                "serial": [],
+                "caution": None,
+                "group": None,
+            })
             continue
         data = dict(settings.data)
         cycle_key, cycle_default = cycle_field(data)
@@ -40,6 +50,7 @@ def station_catalog() -> list[dict[str, Any]]:
             "name": settings.station,
             "description": settings.description,
             "app": settings.app,
+            "group": _app_group(settings.app),
             "serial": serial_fields(data),
             "cycle_key": cycle_key,
             "cycle_default": cycle_default,
@@ -47,6 +58,16 @@ def station_catalog() -> list[dict[str, Any]]:
             "error": None,
         })
     return rows
+
+
+def _app_group(app: str) -> str | None:
+    """功能域：``app`` 点号前的包名。
+
+    :param app: 如 ``calculators.speed_calc``。
+    :return: ``calculators``。空字符串时为 None。
+    """
+    head = app.split(".", 1)[0].strip()
+    return head or None
 
 
 def serial_fields(data: dict[str, Any]) -> list[dict[str, str]]:
