@@ -118,6 +118,7 @@ def _registry() -> dict[str, AppSchema]:
     from ppx_testkit.apps.fct.r3_mcb import McbFctConfig
     from ppx_testkit.apps.lamp._common import LampConfig
     from ppx_testkit.apps.motor.brake_lock_unlock import BrakeTestConfig, RegionProtocolConfig
+    from ppx_testkit.apps.pctool.barcode_type_loop import TypeLoopConfig
     from ppx_testkit.apps.pctool.common import WindowConfig
     from ppx_testkit.apps.pctool.inspect_controls import InspectConfig
     from ppx_testkit.apps.pctool.l5_upgrade_stress import StepStressConfig
@@ -237,6 +238,9 @@ def _registry() -> dict[str, AppSchema]:
         ),
         "pctool.mouse_locate": AppSchema(
             sections=(SectionRule("locate", LocateConfig, required=False),),
+        ),
+        "pctool.barcode_type_loop": AppSchema(
+            sections=(SectionRule("type_loop", TypeLoopConfig, required=False),),
         ),
         "calculators.speed_calc": AppSchema(
             sections=(SectionRule("speed_calc", SpeedCalcConfig, required=False),),

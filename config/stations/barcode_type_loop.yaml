@@ -1,0 +1,20 @@
+# 把光标点进目标输入框后，循环键入条码并回车。
+# 右下角大字变成「通过」或「不通过」后立刻下一轮，不再固定睡满等待时间。
+# 旁边的「通过: N」会滞后，不拿来判断。失败大约 100 秒才变成红色「不通过」，
+# 所以 wait_s 是看到「测试中」之后的最长等待，要大于 100。
+# 试跑：--set type_loop.cycles=2 --set type_loop.wait_s=30
+station: barcode_type_loop
+app: pctool.barcode_type_loop
+description: 条码键入循环
+caution: 开始后有 5 秒，请点击要输入条码的框，并让皮皮熊 CCB 窗口露在前台，右下角结果不要被挡住。出现「通过」或「不通过」后会立刻输入下一条。
+
+type_loop:
+  text: "2020005002R309GD006900364"
+  cycles: 1000
+  wait_s: 120
+  arm_timeout_s: 20
+  poll_s: 0.5
+  startup_delay_s: 5
+  type_interval_s: 0.03
+  window_title: "皮皮熊R3_CCB"
+  verdict_roi: [0.70, 0.78, 0.98, 0.96]
