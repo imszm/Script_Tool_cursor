@@ -59,7 +59,10 @@ class TitleWindowProbe:
         if not elements:
             log.warning("找不到窗口，无法激活: %s", title)
             return False
+        hwnd = int(getattr(elements[0], "handle", 0) or 0)
         try:
+            if hwnd:
+                _force_foreground(hwnd)
             from pywinauto.controls.hwndwrapper import HwndWrapper  # type: ignore[import-not-found]
 
             HwndWrapper(elements[0].handle).set_focus()
@@ -68,6 +71,55 @@ class TitleWindowProbe:
             return False
         log.info("已激活窗口: %s", title)
         return True
+
+    def is_foreground(self, title: str) -> bool:
+        """当前前台窗口是不是标题包含 ``title`` 的那个。
+
+        :param title: 窗口标题片段。
+        :return: 句柄一致时为 True。枚举失败时为 False，不打断键入。
+        """
+        try:
+            elements = self._find(title)
+        except GuiError:
+            return False
+        if not elements:
+            return False
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        foreground = user32.GetForegroundWindow()
+        return bool(foreground) and int(foreground) == int(getattr(elements[0], "handle", 0) or 0)
+
+    def capture(self, title: str) -> Any | None:
+        """截取窗口自身画面。找不到窗口时返回 None。
+
+        自绘失败时也返回 None，调用方再改用屏幕区域。
+
+        :param title: 窗口标题片段。
+        :return: PIL Image，或 None。
+        """
+        try:
+            elements = self._find(title)
+        except GuiError as exc:
+            log.warning("查找窗口 %s 以便截图失败: %s", title, exc)
+            return None
+        if not elements:
+            return None
+        hwnd = int(getattr(elements[0], "handle", 0) or 0)
+        if not hwnd:
+            return None
+        if getattr(self, "_capture_failed", False):
+            return None
+        try:
+            from ppx_testkit.core.gui.screen import capture_hwnd
+
+            return capture_hwnd(hwnd)
+        except Exception as exc:  # noqa: BLE001 - 自绘失败时改由屏幕区域兜底
+            self._capture_failed = True
+            log.warning("窗口自绘截图失败，改用屏幕区域: %s", exc)
+            return None
 
     def prepare(self, title: str, *, size: tuple[int, int] | None = None) -> tuple[int, int, int, int] | None:
         """点击或图像匹配前，把目标窗口恢复、可选固定尺寸并置前。
@@ -149,6 +201,40 @@ class TitleWindowProbe:
             return list(findwindows.find_elements(title_re=pattern, top_level_only=True))
         except Exception as exc:  # noqa: BLE001 - 枚举窗口失败统一转换
             raise GuiError(f"枚举窗口失败: {exc}") from exc
+
+
+def _force_foreground(hwnd: int) -> None:
+    """把窗口拉到前台。网页点「开始」后，浏览器占着焦点，普通置前会被系统拒绝。
+
+    先把当前前台线程和本线程临时接到一起，再恢复并置前。接不上时仍尝试置前。
+
+    :param hwnd: 目标顶层窗口。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.BringWindowToTop.argtypes = [wintypes.HWND]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    foreground = user32.GetForegroundWindow()
+    this_tid = int(kernel32.GetCurrentThreadId())
+    foreground_tid = int(user32.GetWindowThreadProcessId(foreground, None)) if foreground else 0
+    attached = False
+    if foreground_tid and foreground_tid != this_tid:
+        attached = bool(user32.AttachThreadInput(foreground_tid, this_tid, True))
+    try:
+        user32.ShowWindow(hwnd, 9)
+        user32.SetForegroundWindow(hwnd)
+        user32.BringWindowToTop(hwnd)
+    finally:
+        if attached:
+            user32.AttachThreadInput(foreground_tid, this_tid, False)
 
 
 class PsutilProcessControl:

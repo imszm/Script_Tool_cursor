@@ -4,8 +4,9 @@
 旁边的「通过: N / 不通过: N」会滞后，测试刚开始时仍显示上一轮的数字，不能用来判断这一轮。
 标题栏也可能还写着「测试中」，而大字已经变成红色「不通过」，所以只看大字。
 
-回车后先等到大字变成「测试中」，确认新一轮已经开始，再等到「通过」或「不通过」。
-一出现结果就键入下一条，不再固定睡满等待时间。``wait_s`` 只是看到「测试中」之后的最长等待。
+倒计时结束后立刻键入并回车，右下角即使还显示「测试中」也不会因此跳过。
+键入后先等到大字变成「测试中」，再等到「通过」或「不通过」，然后立刻下一轮。
+``wait_s`` 只是看到「测试中」之后的最长等待。
 失败大约要 100 秒才变成「不通过」，所以上限要大于 100 秒。
 
 运行::
@@ -224,11 +225,17 @@ class WindowStampReader:
         :return: ``pass`` / ``fail`` / ``running`` / ``unknown``。
         """
         try:
-            rect = self.probe.rect(self.title)
-            if rect is None:
-                self._warn(f"找不到标题包含「{self.title}」的窗口")
-                return "unknown"
-            return classify_stamp(stamp_pixels(self.grab(rect), self.roi))
+            image = None
+            capture = getattr(self.probe, "capture", None)
+            if callable(capture):
+                image = capture(self.title)
+            if image is None:
+                rect = self.probe.rect(self.title)
+                if rect is None:
+                    self._warn(f"找不到标题包含「{self.title}」的窗口")
+                    return "unknown"
+                image = self.grab(rect)
+            return classify_stamp(stamp_pixels(image, self.roi))
         except Exception as exc:  # noqa: BLE001 - 单次截图失败不能打断整轮压测
             self._warn(f"读取上位机结果失败: {exc}")
             return "unknown"
@@ -243,40 +250,6 @@ class WindowStampReader:
             return
         self._warned = True
         log.warning("%s", message)
-
-
-def wait_until_settled(
-    read: Callable[[], str],
-    sleep: Callable[[float], None],
-    *,
-    wait_s: float,
-    poll_s: float,
-    clock: Callable[[], float],
-) -> str:
-    """开始键入前，如果大字正停在「测试中」，先等它变成通过或不通过。
-
-    这一轮不是本次键入触发的，结果不计入成功率。本来就不是「测试中」时立刻返回。
-    ``sleep`` 必须让 ``clock`` 往前走，否则等待不会结束。
-
-    :param read: 读取当前大字状态。
-    :param sleep: 两次查看之间的等待。
-    :param wait_s: 最长等待秒数。
-    :param poll_s: 查看间隔秒数。
-    :param clock: 单调时钟，测试里可以人为往前拨。
-    :return: 当前或等到的状态。一直是「测试中」时返回 ``timeout``。
-    """
-    start = clock()
-    status = read()
-    if status != "running":
-        return status
-    log.info("上位机正在测试中，先等这一轮结束，不计入本次成功率")
-    while True:
-        if clock() - start >= wait_s:
-            return "timeout"
-        sleep(poll_s)
-        status = read()
-        if status in ("pass", "fail"):
-            return status
 
 
 def await_cycle_verdict(
@@ -324,7 +297,7 @@ def await_cycle_verdict(
             return "timeout"
         if now - last_log >= 10:
             log.info(
-                "第 %d/%d 轮仍在等待，已 %.0f 秒，当前%s",
+                "第 %d/%d 轮仍在等待，已 %.0f 秒，当前状态：%s",
                 index,
                 total,
                 now - start,
@@ -358,8 +331,12 @@ def run_type_loop(
     sleep: Callable[[float], None] = responsive_sleep,
     clock: Callable[[], float] | None = None,
     station: str = "barcode_type_loop",
+    before_type: Callable[[], None] | None = None,
 ) -> TypeLoopResult:
     """重复键入条码，按上位机大字统计通过率。
+
+    倒计时结束后立刻键入，不因为右下角还显示「测试中」而先干等。
+    网页点「开始」时焦点常留在浏览器上，``before_type`` 用来在送键前把上位机拉到前台。
 
     :param cfg: 条码、轮数、结果区域和等待上限。
     :param type_text: 实际送键函数。测试里换成记录调用的假对象。
@@ -367,6 +344,7 @@ def run_type_loop(
     :param sleep: 可中断等待。主线程长等待应能响应停止信号，并且要让 ``clock`` 前进。
     :param clock: 单调时钟。空则用 ``time.monotonic``。
     :param station: 写入统计摘要的工位名。
+    :param before_type: 每次键入前调用。空则直接送键。
     :return: 汇总和逐轮记录。用户中途停止时 ``summary.interrupted`` 为 True。
     """
     now = clock or time.monotonic
@@ -384,67 +362,60 @@ def run_type_loop(
     misses = 0
     try:
         if cfg.startup_delay_s > 0:
-            log.info("请在 %.0f 秒内点击目标输入框，并保持右下角结果可见", cfg.startup_delay_s)
+            log.info("请在 %.0f 秒内点击目标输入框。到点后会键入并回车，即使右下角还显示测试中", cfg.startup_delay_s)
             sleep(cfg.startup_delay_s)
-        settled = wait_until_settled(
-            read_status.read, sleep, wait_s=cfg.wait_s, poll_s=cfg.poll_s, clock=now,
-        )
-        if settled == "timeout":
-            summary.error = "开始时上位机一直显示测试中，未键入条码"
-            log.error(summary.error)
-        else:
-            log.info("开始键入前，右下角是%s", _STATUS_LABEL.get(settled, settled))
-        if summary.error is None:
-            for index in range(1, cfg.cycles + 1):
-                log.info("第 %d/%d 轮：键入并回车", index, cfg.cycles)
-                cycle_started = now()
-                type_text(cfg.text, interval=cfg.type_interval_s, enter=True)
-                verdict = await_cycle_verdict(
-                    read_status.read,
-                    sleep,
-                    index=index,
-                    total=cfg.cycles,
-                    arm_s=cfg.arm_timeout_s,
-                    wait_s=cfg.wait_s,
-                    poll_s=cfg.poll_s,
-                    clock=now,
+        for index in range(1, cfg.cycles + 1):
+            log.info("第 %d/%d 轮：键入并回车", index, cfg.cycles)
+            cycle_started = now()
+            if before_type is not None:
+                before_type()
+            type_text(cfg.text, interval=cfg.type_interval_s, enter=True)
+            verdict = await_cycle_verdict(
+                read_status.read,
+                sleep,
+                index=index,
+                total=cfg.cycles,
+                arm_s=cfg.arm_timeout_s,
+                wait_s=cfg.wait_s,
+                poll_s=cfg.poll_s,
+                clock=now,
+            )
+            elapsed = now() - cycle_started
+            passed = verdict == "pass"
+            summary.executed += 1
+            if passed:
+                summary.passed += 1
+                misses = 0
+            else:
+                summary.failed += 1
+                misses = misses + 1 if verdict == "not_started" else 0
+            detail = _detail(verdict, cfg)
+            rows.append({
+                "cycle": index,
+                "verdict": "PASS" if passed else "FAIL",
+                "detail": detail,
+                "duration_s": round(elapsed, 1),
+            })
+            completed = index
+            log.info(
+                "第 %d/%d 轮结果：%s，用时 %.0f 秒，%s | 通过 %d / 失败 %d | 通过率 %.1f%%",
+                index,
+                cfg.cycles,
+                _VERDICT_LABEL[verdict],
+                elapsed,
+                detail,
+                summary.passed,
+                summary.failed,
+                summary.pass_rate,
+            )
+            if misses >= _START_MISS_LIMIT:
+                summary.aborted = True
+                summary.abort_reason = (
+                    f"连续 {misses} 轮没有进入测试中。"
+                    "请确认光标仍在输入框内，且皮皮熊 CCB 右下角没有被挡住。"
                 )
-                elapsed = now() - cycle_started
-                passed = verdict == "pass"
-                summary.executed += 1
-                if passed:
-                    summary.passed += 1
-                    misses = 0
-                else:
-                    summary.failed += 1
-                    misses = misses + 1 if verdict == "not_started" else 0
-                detail = _detail(verdict, cfg)
-                rows.append({
-                    "cycle": index,
-                    "verdict": "PASS" if passed else "FAIL",
-                    "detail": detail,
-                    "duration_s": round(elapsed, 1),
-                })
-                completed = index
-                log.info(
-                    "第 %d/%d 轮 %s（%.0f 秒）%s | 通过 %d / 失败 %d | 通过率 %.1f%%",
-                    index,
-                    cfg.cycles,
-                    _VERDICT_LABEL[verdict],
-                    elapsed,
-                    detail,
-                    summary.passed,
-                    summary.failed,
-                    summary.pass_rate,
-                )
-                if misses >= _START_MISS_LIMIT:
-                    summary.aborted = True
-                    summary.abort_reason = (
-                        f"连续 {misses} 轮没有进入测试中。"
-                        "请确认光标仍在输入框内，且皮皮熊 CCB 右下角没有被挡住。"
-                    )
-                    log.error(summary.abort_reason)
-                    break
+                log.error(summary.abort_reason)
+                break
     except KeyboardInterrupt:
         summary.interrupted = True
         log.info("已停止，完成 %d/%d 轮", completed, cfg.cycles)
@@ -480,12 +451,23 @@ def run(settings: AppSettings, ctx: RunContext) -> int:
             f"找不到标题包含「{cfg.window_title}」的窗口。请先打开皮皮熊 CCB，并保持右下角结果可见。"
         )
     reader = WindowStampReader(cfg.window_title, cfg.verdict_roi, probe, grab_window)
+
+    def before_type() -> None:
+        """焦点不在皮皮熊窗口上时，先把它拉到前台，避免条码打进浏览器。"""
+        try:
+            if probe.is_foreground(cfg.window_title):
+                return
+        except Exception:  # noqa: BLE001 - 判断前台失败时仍尝试激活
+            log.debug("判断前台窗口失败", exc_info=True)
+        probe.activate(cfg.window_title)
+
     outcome = run_type_loop(
         cfg,
         type_text=type_literal,
         read_status=reader,
         sleep=responsive_sleep,
         station=settings.station,
+        before_type=before_type,
     )
     write_reports(
         ctx,

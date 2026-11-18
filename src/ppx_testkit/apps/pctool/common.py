@@ -213,6 +213,20 @@ def capture_window(window: Any, ctx: RunContext | None, name: str) -> Path | Non
 
 
 def write_reports(ctx: RunContext | None, name: str, *, title: str, rows: Sequence[Mapping[str, Any]],
-                  summary: Mapping[str, Any], columns: Sequence[str] | None = None, html: bool = True) -> None:
-    """输出 CSV，并按需输出 HTML。"""
-    write_detail_reports(ctx, name, title=title, rows=rows, summary=summary, columns=columns, html_report=html)
+                  summary: Mapping[str, Any], columns: Sequence[str] | None = None, html: bool = True,
+                  summary_name: str | None = None) -> None:
+    """输出 CSV，并按需输出 HTML。``summary_name`` 非空时再写一份 JSON 摘要。
+
+    :param ctx: 本次运行目录。没有目录时直接返回。
+    :param name: 报告文件名，不含扩展名。
+    :param title: HTML 标题。
+    :param rows: 逐轮记录。
+    :param summary: 汇总。
+    :param columns: CSV 和 HTML 的列顺序。空则使用记录里的键。
+    :param html: 是否同时写 HTML。
+    :param summary_name: JSON 摘要文件名。空则不写。
+    """
+    write_detail_reports(
+        ctx, name, title=title, rows=rows, summary=summary, columns=columns,
+        html_report=html, summary_name=summary_name,
+    )

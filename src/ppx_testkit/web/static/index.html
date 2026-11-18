@@ -50,14 +50,16 @@
         --forced-border: #8a3a32;
       }
     }
-    body { margin: 0; font: 15px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+    html, body { height: 100%; }
+    body { margin: 0; display: flex; flex-direction: column; overflow: hidden;
+      font: 15px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
       background: var(--bg); color: var(--fg); }
-    header { padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    header { flex: 0 0 auto; padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
     header h1 { margin: 0 0 4px; font-size: 20px; }
     header p { margin: 0; color: var(--muted); }
-    main { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 78px); }
+    main { flex: 1; min-height: 0; display: grid; grid-template-columns: 280px 1fr; }
     aside { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0;
-      background: var(--panel); }
+      overflow: hidden; background: var(--panel); }
     .filter { padding: 8px; border-bottom: 1px solid var(--line); }
     .filter input { width: 100%; box-sizing: border-box; min-width: 0; }
     #list { overflow: auto; flex: 1; }
@@ -68,7 +70,8 @@
     button.station span { display: block; font-size: 12px; color: var(--muted); }
     button.station.active { background: var(--active); }
     .empty { padding: 12px 14px; color: var(--muted); }
-    section { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    section { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0;
+      overflow: hidden; }
     label { display: block; margin: 8px 0; }
     select, input { font: inherit; padding: 6px 8px; min-width: 220px; background: var(--panel); color: inherit;
       border: 1px solid var(--line); }
@@ -85,12 +88,12 @@
     #state.ok { color: var(--ok); font-weight: 600; }
     #state.bad { color: var(--bad); font-weight: 600; }
     #state.idle { color: var(--muted); }
-    #log { flex: 1; min-height: 240px; margin: 0; padding: 10px; overflow: auto;
+    #log { flex: 1 1 auto; min-height: 0; margin: 0; padding: 10px; overflow: auto;
       background: var(--log-bg); color: var(--log-fg); font: 12px/1.45 Consolas, monospace; white-space: pre-wrap; }
     .muted { color: var(--muted); }
     @media (max-width: 800px) {
-      main { grid-template-columns: 1fr; }
-      #list { max-height: 280px; }
+      main { grid-template-columns: 1fr; grid-template-rows: minmax(140px, 28vh) minmax(0, 1fr); }
+      #list { max-height: none; }
     }
   </style>
 </head>
@@ -134,6 +137,7 @@
     let current = null;
     let offset = 0;
     let stick = true;
+    let followLock = false;
     let isRunning = false;
     let startPending = false;
     let query = "";
@@ -181,8 +185,36 @@
       const follow = stick;
       const note = logTrimmed ? "已省略较早日志，完整内容见 full.log\n" : "";
       const body = logLines.length ? logLines.join("\n") + "\n" : "";
+      followLock = true;
       logEl.textContent = note + body;
-      if (follow) logEl.scrollTop = logEl.scrollHeight;
+      if (!follow) {
+        followLock = false;
+        return;
+      }
+      requestAnimationFrame(() => {
+        logEl.scrollTop = logEl.scrollHeight;
+        requestAnimationFrame(() => { followLock = false; });
+      });
+    }
+
+    function payloadOf(line, pipes) {
+      const parts = line.split(" | ");
+      if (parts.length <= pipes) return line.trim();
+      return parts.slice(pipes).join(" | ").trim();
+    }
+
+    function unseenTail(tail) {
+      const seenLine = new Set(logLines.map((line) => line.trim()).filter(Boolean));
+      const seenMessage = new Set(logLines.map((line) => payloadOf(line, 2)).filter(Boolean));
+      const fresh = [];
+      tail.forEach((line) => {
+        const text = String(line).trim();
+        if (!text || seenLine.has(text)) return;
+        const message = payloadOf(text, 4);
+        if (seenMessage.has(message) || seenMessage.has(text)) return;
+        fresh.push(line);
+      });
+      return fresh;
     }
 
     function appendLines(lines) {
@@ -438,7 +470,8 @@
         offset = typeof log.next === "number" ? log.next : offset;
         if (!running && status.full_tail && status.full_tail.length && !tailShown) {
           tailShown = true;
-          appendLines(["----- full.log 尾部 -----"].concat(status.full_tail));
+          const extra = unseenTail(status.full_tail);
+          if (extra.length) appendLines(["----- 控制台未显示的收尾 -----"].concat(extra));
         }
       } catch (err) {
         if (gen !== runGen) return;
@@ -453,6 +486,7 @@
     }
 
     logEl.addEventListener("scroll", () => {
+      if (followLock) return;
       stick = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 24;
     });
     startBtn.onclick = startRun;

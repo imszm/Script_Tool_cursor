@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 
 import pytest
 
@@ -103,7 +104,6 @@ def test_pass_or_fail_starts_the_next_round_without_the_full_wait() -> None:
     calls: list[tuple[str, float, bool]] = []
     sleep, clock = _clock(sleeps)
     script = _Script([
-        "pass",
         "running", "pass",
         "running", "fail",
         "pass", "running", "pass",
@@ -129,7 +129,7 @@ def test_pass_or_fail_starts_the_next_round_without_the_full_wait() -> None:
 def test_previous_pass_is_ignored_until_the_new_round_is_running() -> None:
     sleeps: list[float] = []
     sleep, clock = _clock(sleeps)
-    script = _Script(["unknown", "pass", "pass", "running", "pass"])
+    script = _Script(["pass", "pass", "running", "pass"])
 
     def type_text(text: str, *, interval: float = 0.03, enter: bool = False) -> None:
         return None
@@ -141,12 +141,12 @@ def test_previous_pass_is_ignored_until_the_new_round_is_running() -> None:
     assert sleeps == [1, 1, 1]
 
 
-def test_already_running_at_start_is_not_counted() -> None:
-    """开始前大字已经是测试中：等它结束，不把它算进通过率，然后再键入。"""
+def test_already_running_still_types_immediately() -> None:
+    """右下角已经是测试中时也要先键入，不能干等上一轮结束。"""
     sleeps: list[float] = []
     calls: list[str] = []
     sleep, clock = _clock(sleeps)
-    script = _Script(["running", "pass", "running", "pass"])
+    script = _Script(["running", "pass"])
 
     def type_text(text: str, *, interval: float = 0.03, enter: bool = False) -> None:
         calls.append(text)
@@ -156,10 +156,10 @@ def test_already_running_at_start_is_not_counted() -> None:
     assert calls == ["ABC"]
     assert outcome.summary.passed == 1
     assert outcome.summary.executed == 1
-    assert sleeps == [10, 10]
+    assert sleeps == [10]
 
 
-def test_stuck_on_running_before_typing_does_not_send_a_barcode() -> None:
+def test_stuck_on_running_still_sends_a_barcode() -> None:
     sleeps: list[float] = []
     calls: list[str] = []
     sleep, clock = _clock(sleeps)
@@ -173,12 +173,11 @@ def test_stuck_on_running_before_typing_does_not_send_a_barcode() -> None:
 
     cfg = TypeLoopConfig(text="ABC", cycles=1, wait_s=30, startup_delay_s=0, poll_s=10, arm_timeout_s=20)
     outcome = run_type_loop(cfg, type_text=type_text, read_status=_Running(), sleep=sleep, clock=clock)
-    assert calls == []
-    assert outcome.summary.executed == 0
-    assert outcome.summary.error
+    assert calls == ["ABC"]
+    assert outcome.summary.executed == 1
+    assert outcome.summary.failed == 1
     assert outcome.summary.exit_code == 1
     assert sleeps == [10, 10, 10]
-    assert outcome.summary.duration_s == 30
 
 
 def test_timeout_after_running_counts_as_failure_and_can_continue() -> None:
@@ -187,12 +186,8 @@ def test_timeout_after_running_counts_as_failure_and_can_continue() -> None:
     sleep, clock = _clock(sleeps)
 
     class _RunningAfterIdle:
-        def __init__(self) -> None:
-            self.reads = 0
-
         def read(self) -> str:
-            self.reads += 1
-            return "unknown" if self.reads == 1 else "running"
+            return "running"
 
     def type_text(text: str, *, interval: float = 0.03, enter: bool = False) -> None:
         calls.append(text)
@@ -254,12 +249,32 @@ def test_interrupt_during_wait_stops_later_rounds() -> None:
     assert outcome.summary.exit_code == 130
 
 
+def test_write_reports_writes_summary_json(tmp_path) -> None:
+    """收尾必须能带上 summary_name。上次实跑就是在这里抛 TypeError，报告没有落盘。"""
+    from ppx_testkit.apps.pctool.common import write_reports
+    from ppx_testkit.logger import RunContext
+
+    ctx = RunContext(station="barcode_type_loop", run_id="t", run_dir=tmp_path, started_at=datetime.now())
+    write_reports(
+        ctx,
+        "report",
+        title="条码键入",
+        rows=[{"cycle": 1, "verdict": "PASS", "detail": "右下角为通过", "duration_s": 44}],
+        summary={"passed": 1, "failed": 0, "executed": 1, "ok": True},
+        columns=["cycle", "verdict", "detail", "duration_s"],
+        summary_name="summary.json",
+    )
+    assert (tmp_path / "report.csv").is_file()
+    assert (tmp_path / "report.html").is_file()
+    assert "passed" in (tmp_path / "summary.json").read_text(encoding="utf-8")
+
+
 def test_station_yaml_loads_requested_values() -> None:
     settings = load_settings("barcode_type_loop", use_local=False, environ={})
     cfg = settings.section("type_loop", TypeLoopConfig)
     assert settings.app == "pctool.barcode_type_loop"
     assert cfg.text == "2020005002R309GD006900364"
-    assert cfg.cycles == 1000
+    assert cfg.cycles == 10000
     assert cfg.wait_s == 120.0
     assert cfg.arm_timeout_s == 20.0
     assert cfg.poll_s == 0.5

@@ -6,11 +6,11 @@
 station: barcode_type_loop
 app: pctool.barcode_type_loop
 description: 条码键入循环
-caution: 开始后有 5 秒，请点击要输入条码的框，并让皮皮熊 CCB 窗口露在前台，右下角结果不要被挡住。出现「通过」或「不通过」后会立刻输入下一条。
+caution: 开始后有 5 秒，请点击要输入条码的框。到点后会键入并回车；若焦点还在浏览器上，会先把皮皮熊窗口拉到前台。出现「通过」或「不通过」后会立刻输入下一条。
 
 type_loop:
   text: "2020005002R309GD006900364"
-  cycles: 1000
+  cycles: 10000
   wait_s: 120
   arm_timeout_s: 20
   poll_s: 0.5

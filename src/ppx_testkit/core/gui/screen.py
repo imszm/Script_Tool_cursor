@@ -276,6 +276,106 @@ def _send_unicode_char(code: int) -> None:
         raise GuiError(f"Unicode 输入失败，送出 {sent}/2，错误码 {error}")
 
 
+def capture_hwnd(hwnd: int) -> Any:
+    """截取窗口自己画出的内容。前面挡住的网页不会被拍进这张图。
+
+    先试带完整内容的 PrintWindow，失败再退回普通 PrintWindow。
+
+    :param hwnd: 顶层窗口句柄。
+    :return: RGB 的 PIL Image。调用方用完后图像与窗口无绑定。
+    :raises GuiError: 句柄无效、尺寸不对，或系统没有把画面交出来。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    from PIL import Image
+
+    if not hwnd:
+        raise GuiError("窗口句柄无效")
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    gdi32 = ctypes.WinDLL("gdi32", use_last_error=True)
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.GetWindowDC.argtypes = [wintypes.HWND]
+    user32.GetWindowDC.restype = wintypes.HDC
+    user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    user32.PrintWindow.argtypes = [wintypes.HWND, wintypes.HDC, wintypes.UINT]
+    user32.PrintWindow.restype = wintypes.BOOL
+    gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    gdi32.CreateCompatibleDC.restype = wintypes.HDC
+    gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+    gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+    gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+    gdi32.SelectObject.restype = wintypes.HGDIOBJ
+    gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    gdi32.DeleteDC.argtypes = [wintypes.HDC]
+    gdi32.GetDIBits.argtypes = [
+        wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT,
+        ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT,
+    ]
+    gdi32.GetDIBits.restype = ctypes.c_int
+
+    rect = wintypes.RECT()
+    if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        raise GuiError("读取窗口大小失败")
+    width = int(rect.right - rect.left)
+    height = int(rect.bottom - rect.top)
+    if width <= 0 or height <= 0:
+        raise GuiError(f"窗口尺寸无效: {width}x{height}")
+    hwnd_dc = user32.GetWindowDC(hwnd)
+    if not hwnd_dc:
+        raise GuiError("无法取得窗口设备上下文")
+    mem_dc = gdi32.CreateCompatibleDC(hwnd_dc)
+    bitmap = gdi32.CreateCompatibleBitmap(hwnd_dc, width, height)
+    old = None
+    try:
+        if not mem_dc or not bitmap:
+            raise GuiError("无法创建截图缓冲")
+        old = gdi32.SelectObject(mem_dc, bitmap)
+        painted = bool(user32.PrintWindow(hwnd, mem_dc, 2)) or bool(user32.PrintWindow(hwnd, mem_dc, 0))
+        if not painted:
+            raise GuiError("PrintWindow 失败")
+
+        class _BitmapInfoHeader(ctypes.Structure):
+            _fields_ = [
+                ("biSize", wintypes.DWORD),
+                ("biWidth", wintypes.LONG),
+                ("biHeight", wintypes.LONG),
+                ("biPlanes", wintypes.WORD),
+                ("biBitCount", wintypes.WORD),
+                ("biCompression", wintypes.DWORD),
+                ("biSizeImage", wintypes.DWORD),
+                ("biXPelsPerMeter", wintypes.LONG),
+                ("biYPelsPerMeter", wintypes.LONG),
+                ("biClrUsed", wintypes.DWORD),
+                ("biClrImportant", wintypes.DWORD),
+            ]
+
+        class _BitmapInfo(ctypes.Structure):
+            _fields_ = [("bmiHeader", _BitmapInfoHeader), ("bmiColors", wintypes.DWORD)]
+
+        info = _BitmapInfo()
+        info.bmiHeader.biSize = ctypes.sizeof(_BitmapInfoHeader)
+        info.bmiHeader.biWidth = width
+        info.bmiHeader.biHeight = -height
+        info.bmiHeader.biPlanes = 1
+        info.bmiHeader.biBitCount = 32
+        info.bmiHeader.biCompression = 0
+        buffer = ctypes.create_string_buffer(width * height * 4)
+        rows = int(gdi32.GetDIBits(mem_dc, bitmap, 0, height, buffer, ctypes.byref(info), 0))
+        if rows != height:
+            raise GuiError(f"读取位图失败，得到 {rows} 行")
+        image = Image.frombuffer("RGB", (width, height), buffer, "raw", "BGRX", 0, 1)
+        return image.copy()
+    finally:
+        if old:
+            gdi32.SelectObject(mem_dc, old)
+        if bitmap:
+            gdi32.DeleteObject(bitmap)
+        if mem_dc:
+            gdi32.DeleteDC(mem_dc)
+        user32.ReleaseDC(hwnd, hwnd_dc)
+
+
 def type_literal(text: str, *, interval: float = 0.03, enter: bool = False) -> None:
     """按当前键盘布局逐键输入，最后可以补一次回车。
 
